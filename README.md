@@ -54,16 +54,21 @@ Melbourne, which change over seamlessly mid-run.
 ## How it's built
 
 Plain JavaScript modules and a 2D canvas, no build step and no dependencies.
-The game draws into a 320×180 buffer with a small Doom-style software renderer
+The game draws into a 640×360 buffer with a small Doom-style software renderer
 (a port of the concept-art renderer in `concept/`): exact scan conversion of
 floors, side walls and camera-facing walls, billboard sprites, a z-buffer,
 distance fog and cel outlines. Each frame is then snapped to a fixed
-64-colour palette (no dither) and scaled up with nearest-neighbour. That runs
-comfortably at 60 fps, so WebAssembly wasn't needed.
+64-colour palette (no dither) and scaled up with nearest-neighbour.
+WebAssembly wasn't needed.
+
+The menus, HUD and pixel font are laid out on a 320×180 grid and drawn in 2×2
+blocks, so they keep their chunky look. The 3D view uses the full 640×360.
+If a machine can't keep up (frames averaging over 15 ms), the 3D view drops to
+320×180 for the rest of the session.
 
 | Path | What |
 | --- | --- |
-| `index.html` | the page; scales the 320×180 screen to fit |
+| `index.html` | the page; scales the 640×360 screen to fit |
 | `src/main.js` | main loop, input, screen flow |
 | `src/game.js` | the run: physics, collisions, the dingo, level generator |
 | `src/render.js` | the software renderer |
@@ -93,7 +98,8 @@ python3 -m http.server
 
 To test a level, start the run in it with `?zone=`, e.g.
 `http://localhost:8000/?zone=yarra` (`swanston`, `bourke`, `stkilda`,
-`collins` or `yarra`).
+`collins` or `yarra`). Add `&res=high` or `&res=low` to fix the 3D view at
+640×360 or 320×180 instead of choosing it automatically.
 
 If you change the palette or the Japanese text in `tools/gen_assets.py`,
 rerun it to regenerate `src/palette.js` and `src/jptext.js`.

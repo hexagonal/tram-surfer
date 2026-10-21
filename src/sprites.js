@@ -1,7 +1,7 @@
 // Hand-drawn pixel sprites for the 3D view: the kid from behind, coins,
 // lanterns, and the sakura trees along Swanston St.
 
-import { spriteFromArt, hex, hsh } from './gfx.js';
+import { spriteFromArt, scale2x, hex, hsh, S } from './gfx.js';
 
 const PAL = {
   k: '#1a1020', h: '#3fb8cc', H: '#b0f4f4', d: '#23788c', s: '#f4cbaa', r: '#e8303c', R: '#a01830',
@@ -72,11 +72,13 @@ kjjkgGGGGGGgkJJk
 
 const mirror = (art) => '\n' + art.trim().split('\n').map((r) => r.padEnd(20, '.').split('').reverse().join('')).join('\n');
 
+// the 3D view runs at twice the resolution these were drawn for, so they are
+// doubled with Scale2x, which rounds off the stair steps instead of fattening them
 export const RUNNER = {
-  runA: spriteFromArt(TOP + LEGS_A, PAL),
-  runB: spriteFromArt(TOP + mirror(LEGS_A), PAL),
-  jump: spriteFromArt(TOP + LEGS_JUMP, PAL),
-  roll: spriteFromArt(ROLL, PAL),
+  runA: scale2x(spriteFromArt(TOP + LEGS_A, PAL)),
+  runB: scale2x(spriteFromArt(TOP + mirror(LEGS_A), PAL)),
+  jump: scale2x(spriteFromArt(TOP + LEGS_JUMP, PAL)),
+  roll: scale2x(spriteFromArt(ROLL, PAL)),
 };
 
 export const COIN = spriteFromArt(`
@@ -88,8 +90,10 @@ kyyyyyYk
 kyyyyyYk
 .kYYYYk.
 ..kkkk..`, PAL);
+/** The coin for the 3D view. */
+export const COIN_HI = scale2x(COIN);
 
-export const LANTERN = spriteFromArt(`
+export const LANTERN = scale2x(spriteFromArt(`
 ..kk..
 .kRRk.
 krrrrk
@@ -99,12 +103,12 @@ krrrrk
 kkkkkk
 .kRRk.
 ..kk..
-..yy..`, PAL);
+..yy..`, PAL));
 
 export const SAKURA = ['#e27ea0', '#ffbcd2', '#fff0f6', '#b8587a'];
 
 /** A tree as a billboard sprite (h metres tall), from the concept's blob tree. */
-export function treeSprite(seed, leaves = SAKURA, px = 96) {
+export function treeSprite(seed, leaves = SAKURA, px = 96 * S) {
   let st = seed * 9301 + 49297;
   const rnd = (a, b) => { st = (st * 9301 + 49297) % 233280; return a + (st / 233280) * (b - a); };
   const blobs = [];
@@ -124,8 +128,8 @@ export function treeSprite(seed, leaves = SAKURA, px = 96) {
       let c = -1;
       if (can) {
         c = lit ? L[1] : L[0];
-        if (lit && hsh(u * 40, v * 40) > 0.85) c = L[2];
-        if (!lit && hsh(u * 30, v * 30) > 0.8) c = L[3];
+        if (lit && hsh(u * 40 * S, v * 40 * S) > 0.85) c = L[2];
+        if (!lit && hsh(u * 30 * S, v * 30 * S) > 0.8) c = L[3];
       } else {
         const trunk = Math.abs(u) < 0.035 + (v < 0.1 ? 0.02 : 0) && v < 0.6;
         const br = v > 0.35 && v < 0.62 && Math.abs(Math.abs(u) - (v - 0.35) * 0.8) < 0.025;

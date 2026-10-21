@@ -1,7 +1,7 @@
 // Tram Surfer: boot, main loop, input and the screen flow
 // (intro -> start screen -> run -> game over).
 
-import { W, H, Frame, mix } from './gfx.js';
+import { W, H, S as PX, LW, LH, Frame, mix } from './gfx.js';
 import { Scene, TAG } from './render.js';
 import { Street, drawBarrier, drawRamp, drawCoin } from './street.js';
 import { drawTram } from './trams.js';
@@ -22,10 +22,16 @@ const btns = new S.Buttons();
 const sound = new Sound();
 let street = null;
 // for testing: ?zone=collins starts the run in that zone
-const START_ZONE = ZONES[new URLSearchParams(location.search).get('zone')] ? new URLSearchParams(location.search).get('zone') : 'swanston';
+const QUERY = new URLSearchParams(location.search);
+const START_ZONE = ZONES[QUERY.get('zone')] ? QUERY.get('zone') : 'swanston';
+// the 3D view runs at 640x360 and drops to 320x180 if the machine can't keep
+// up; ?res=low or ?res=high fixes it either way
+const RES = QUERY.get('res');
+if (RES === 'low') scene.setDetail(2);
+const slow = { ms: 0, n: 0 };
 const skyBlend = new Int32Array(W * H);
 
-const DINGO = [0, 0.25, 0.5, 0.75].map(dingoBackSprite);
+const DINGO = [0, 0.25, 0.5, 0.75].map((ph) => dingoBackSprite(ph, PX));
 const BEST_KEY = 'tram-surfer:best';
 let best = 0;
 try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch { /* private mode */ }
@@ -105,7 +111,7 @@ addEventListener('keydown', (e) => {
 // touch / mouse: swipes steer, taps press buttons
 function toScreen(e) {
   const r = canvas.getBoundingClientRect();
-  return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+  return [((e.clientX - r.left) / r.width) * LW, ((e.clientY - r.top) / r.height) * LH];
 }
 
 let touch = null;
@@ -167,14 +173,14 @@ function board(x, z, t) {
 
 function drawWorld(dt) {
   const cam = run.camera();
-  scene.hor = cam.hor;
+  scene.hor = cam.hor * scene.ppx;
   clock.t = run.time;
   const p = run.p, t = run.time;
   const here = ZONES[run.zoneAt(p.z)];
   scene.fogc = here.fogc;
   scene.fogk = here.fogk;
   scene.env = run.zones.map((zn) => ({ z0: zn.z0, z1: zn.z1, fogc: ZONES[zn.id].fogc, fogk: ZONES[zn.id].fogk, night: !!ZONES[zn.id].night }));
-  scene.begin(cam, sky(cam.hor));
+  scene.begin(cam, sky(cam.hor * PX));
   const onWater = (x, z, y) => ZONES[run.zoneAt(z)].water && y < 0.3;
 
   // the kid, with a shadow on whatever he is over
@@ -212,12 +218,28 @@ function drawWorld(dt) {
   for (const tr of trams) drawTram(scene, tr, !!ZONES[run.zoneAt(tr.z)].night);
   street.draw(scene);
   scene.outlines();
-  S.speedLines(frame, cam.hor, t, run.speed);
+  scene.end();
+  S.speedLines(frame, cam.hor * PX, t, run.speed);
   if (here.id === 'swanston' || here.id === 'bourke') S.petals(frame, t, dt);
+}
+
+/**
+ * If a frame's work keeps taking most of a 60 Hz frame, render the 3D view at
+ * half resolution for the rest of the session. The first second of a run is
+ * skipped, since it includes warming up.
+ */
+function watchSpeed(ms) {
+  if (run.time < 1) return;
+  slow.ms += ms;
+  if (++slow.n < 120) return;
+  if (slow.ms / slow.n > 15) scene.setDetail(2);
+  slow.ms = 0;
+  slow.n = 0;
 }
 
 let last = performance.now();
 function loop(now) {
+  const t0 = performance.now();
   const dt = Math.min(0.05, (now - last) / 1000);
   last = now;
   stateT += dt;
@@ -248,9 +270,10 @@ function loop(now) {
     if (state === 'paused') S.pauseMenu(frame, btns, sound);
   }
   frame.present(ctx, imageData, out32);
+  if (state === 'play' && !RES && scene.step === 1) watchSpeed(performance.now() - t0);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
 // handy for poking at the game from the console
-globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; } };
+globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; }, get detail() { return scene.step; } };
