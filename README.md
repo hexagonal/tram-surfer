@@ -48,6 +48,7 @@ Melbourne, which change over seamlessly mid-run.
 | Jump | ↑, W or Space | swipe up |
 | Roll (or drop fast from a jump) | ↓ or S | swipe down |
 | Pause | P or Esc | ❚❚ button |
+| Menu buttons (pause, game over) | arrows or WASD to choose, Enter or Space to press | tap |
 | Mute | M | speaker button |
 | Volume | − / + | pause menu |
 

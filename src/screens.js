@@ -60,9 +60,22 @@ export function petals(fr, time, dt) {
 // --- buttons --------------------------------------------------------------------------
 
 export class Buttons {
-  constructor() { this.list = []; }
-  clear() { this.list = []; }
+  constructor() {
+    this.list = [];
+    // menu buttons in screen order, and the one the keyboard has selected
+    this.order = [];
+    this.focus = null;
+  }
+  clear() { this.list = []; this.order = []; }
   add(x, y, w, h, action) { this.list.push({ x, y, w, h, action }); }
+  /** Move the keyboard selection by d buttons (wrapping), or onto the first one. */
+  step(d) {
+    const n = this.order.length;
+    if (!n) return false;
+    const i = this.order.indexOf(this.focus);
+    this.focus = i < 0 ? this.order[0] : this.order[(i + d + n) % n];
+    return true;
+  }
   hit(px, py) {
     for (let i = this.list.length - 1; i >= 0; i--) {
       const b = this.list[i];
@@ -73,10 +86,17 @@ export class Buttons {
 }
 
 function button(fr, btns, x, y, w, h, label, action, col = '#ffd23a') {
-  fr.dim(x, y, w, h, 2);
-  fr.rect(x, y, w, 1, c(col)); fr.rect(x, y + h - 1, w, 1, c(col));
-  fr.rect(x, y, 1, h, c(col)); fr.rect(x + w - 1, y, 1, h, c(col));
-  textC(fr, x + w / 2, y + ((h - 5) >> 1), label, col);
+  btns.order.push(action);
+  if (btns.focus === action) {
+    // selected: filled in, with dark letters
+    fr.rect(x, y, w, h, c(col));
+    textC(fr, x + w / 2, y + ((h - 5) >> 1), label, '#1a1020', 1, '');
+  } else {
+    fr.dim(x, y, w, h, 2);
+    fr.rect(x, y, w, 1, c(col)); fr.rect(x, y + h - 1, w, 1, c(col));
+    fr.rect(x, y, 1, h, c(col)); fr.rect(x + w - 1, y, 1, h, c(col));
+    textC(fr, x + w / 2, y + ((h - 5) >> 1), label, col);
+  }
   btns.add(x, y, w, h, action);
 }
 

@@ -45,9 +45,13 @@ let stateT = 0;
 let run = null;
 let volFlash = 0;
 
+// the button each menu selects first, for the keyboard
+const FIRST = { paused: 'resume', over: 'retry' };
+
 function setState(s) {
   state = s;
   stateT = 0;
+  btns.focus = FIRST[s] ?? null;
 }
 
 function newRun() {
@@ -99,13 +103,24 @@ const KEYS = {
   KeyP: 'pause', Escape: 'pause', KeyM: 'mute', Minus: 'vol-', NumpadSubtract: 'vol-', Equal: 'vol+', NumpadAdd: 'vol+',
 };
 
+// in menus, arrows and WASD move between buttons and Enter or Space presses one
+const MENU_KEYS = { ArrowUp: -1, KeyW: -1, ArrowLeft: -1, KeyA: -1, ArrowDown: 1, KeyS: 1, ArrowRight: 1, KeyD: 1 };
+
 addEventListener('keydown', (e) => {
   if (e.repeat && !['vol-', 'vol+'].includes(KEYS[e.code])) return;
   let a = KEYS[e.code];
   if (state === 'intro') a = 'skip';
   else if (state === 'title' && ['Enter', 'Space', 'ArrowUp', 'KeyW'].includes(e.code)) a = 'start';
-  else if (state === 'over' && stateT > 1 && (e.code === 'Enter' || e.code === 'Space')) a = 'retry';
-  else if (state === 'paused' && (e.code === 'Enter' || e.code === 'Space')) a = 'resume';
+  else if (state === 'over' || state === 'paused') {
+    // keys still held from steering into the crash shouldn't pick a button
+    if (state === 'over' && stateT < 1.3) return;
+    if (e.code in MENU_KEYS) {
+      e.preventDefault();
+      if (btns.step(MENU_KEYS[e.code])) sound.play('click');
+      return;
+    }
+    if (e.code === 'Enter' || e.code === 'Space') a = btns.order.includes(btns.focus) ? btns.focus : null;
+  }
   if (a) {
     e.preventDefault();
     act(a);
@@ -280,4 +295,4 @@ function loop(now) {
 requestAnimationFrame(loop);
 
 // handy for poking at the game from the console
-globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; }, get detail() { return scene.step; } };
+globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; }, get detail() { return scene.step; }, btns };
