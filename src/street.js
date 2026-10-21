@@ -5,7 +5,7 @@
 
 import { hex, scale, hsh, jpSign, noren } from './gfx.js';
 import { TAG, EMIS } from './render.js';
-import { LANTERN, treeSprite, COIN_HI, SAKURA } from './sprites.js';
+import { LANTERN, treeSprite, COIN_HI, BLUE_COIN_HI, SAKURA } from './sprites.js';
 import { ZONES, STYLES, SIGNS, facade } from './zones.js';
 
 export { LANES } from './zones.js';
@@ -240,5 +240,23 @@ export function drawRamp(s, r) {
 
 export function drawCoin(s, coin, time) {
   const spin = Math.abs(Math.cos(time * 5 + coin.z * 0.7));
-  s.sprite(COIN_HI, coin.x, coin.y, coin.z, 0.55 * Math.max(0.25, spin), TAG.OBJ, { glow: true, h: 0.55, emis: true });
+  s.sprite(coin.blue ? BLUE_COIN_HI : COIN_HI, coin.x, coin.y, coin.z, 0.55 * Math.max(0.25, spin), TAG.OBJ, { glow: true, h: 0.55, emis: true });
+}
+
+const MAT = c('#22306a'), MAT_L = c('#3a4a9a'), RIM_R = c('#e8303c'), RIM_Y = c('#ffd23a'), SKIRT = c('#24242a');
+
+/** A round trampoline; the mat dips when someone bounces on it. */
+export function drawTrampoline(s, tr) {
+  const top = 0.45 - (tr.boing || 0) * 0.2, rx = 1.0, rz = 0.9;
+  s.floor(top, tr.x - rx, tr.x + rx, tr.z - rz, tr.z + rz, (x, z) => {
+    const dx = (x - tr.x) / rx, dz = (z - tr.z) / rz, d = dx * dx + dz * dz;
+    if (d > 1) return -1;
+    if (d > 0.72) return fm(Math.atan2(dz, dx) * 2.5, 1) < 0.5 ? RIM_R : RIM_Y;
+    return d < 0.12 ? MAT_L : MAT;
+  }, TAG.OBJ);
+  // the skirt and legs, seen from in front
+  s.front(tr.z - rz * 0.55, tr.x - rx * 0.85, tr.x + rx * 0.85, 0, 0.45, (x, y) => {
+    if (y > 0.3) return SKIRT;
+    return Math.abs(Math.abs(x - tr.x) - rx * 0.6) < 0.06 ? SKIRT : -1;
+  }, TAG.OBJ);
 }

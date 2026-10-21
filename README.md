@@ -18,6 +18,12 @@ Melbourne, which change over seamlessly mid-run.
   G class trams, parked or coming down the line at you (listen for the bell)
 - Roadworks barriers to jump over or roll under, coins, a score multiplier
   that grows with distance, and a best score saved in the browser
+- Coins set the pace: each one speeds the kid up a little, and going a moment
+  without one slows him back down (14 to 32 m/s). Blue coins are worth twice
+  the points and twice the speed. The music speeds up and slows down with him
+- Coin trams (ferries on the Yarra) pull away as you get close, with a roof
+  full of coins: run up the ramp behind one as it sets off, or bounce off a
+  trampoline to land on it
 - Pup, the chibi dingo: bump the side of a tram and you stumble, which slows
   you down and brings him right up behind you, where he stays in view as a
   warning. Stumble again within 20 seconds and he chomps you; after 20 clean
