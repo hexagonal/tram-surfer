@@ -22,13 +22,20 @@ from render import jp_bitmap  # noqa: E402
 KEEP = [  # HUD, pickups, characters and liveries that must stay exact
     "#ffd23a", "#c88a10", "#fffbe0", "#ffffff", "#140c1c", "#e8303c", "#ff8a3a", "#3fb8cc",
     "#e8953a", "#ffbe68", "#b8682a", "#fff0d8", "#2d6a3e", "#e8c050", "#7c1f28", "#d2a02a",
-    "#6cb02c", "#ffbcd2", "#e27ea0", "#f2a41e", "#2a3264", "#f4cbaa", "#2f7ee6", "#c8ecff"]
+    "#6cb02c", "#ffbcd2", "#e27ea0", "#f2a41e", "#2a3264", "#f4cbaa", "#2f7ee6", "#c8ecff",
+    # the other zones: Collins St at night, the Yarra, St Kilda Rd's plane trees
+    "#141a2a", "#ffd98a", "#ff3ca0", "#30f0ff", "#7a5a36", "#5a4026", "#3f7a34", "#7cbc48",
+    "#4a4a52", "#2e2e36", "#66646a", "#a07850"]
 SOURCES = ["f-swanston-direction", "g-stkilda-direction", "i-start-screen", "j-intro-storyboard",
-           "h-dingo-designs"]
+           "h-dingo-designs", "c-bourke-night"]
 
 JP = {
     # (text, size, vertical)
     "swanston": ("スワンストン通り", 12, False),
+    "bourke": ("バーク通り", 12, False),
+    "stkilda": ("セントキルダ通り", 12, False),
+    "collins": ("コリンズ通り", 12, False),
+    "yarra": ("ヤラ川", 12, False),
     "title": ("トラムサーファー", 12, False),
     "surfer": ("サーファー", 16, False),
     "dingo": ("ディンゴ", 16, False),

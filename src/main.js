@@ -1,7 +1,7 @@
 // Tram Surfer: boot, main loop, input and the screen flow
 // (intro -> start screen -> run -> game over).
 
-import { W, H, Frame } from './gfx.js';
+import { W, H, Frame, mix } from './gfx.js';
 import { Scene, TAG } from './render.js';
 import { Street, drawBarrier, drawRamp, drawCoin } from './street.js';
 import { drawTram } from './trams.js';
@@ -10,6 +10,7 @@ import { dingoBackSprite } from './characters.js';
 import { Run } from './game.js';
 import { Sound } from './audio.js';
 import * as S from './screens.js';
+import { ZONES, skyFor, clock } from './zones.js';
 
 const canvas = document.getElementById('screen');
 const ctx = canvas.getContext('2d');
@@ -19,7 +20,10 @@ const frame = new Frame();
 const scene = new Scene(frame);
 const btns = new S.Buttons();
 const sound = new Sound();
-let street = new Street();
+let street = null;
+// for testing: ?zone=collins starts the run in that zone
+const START_ZONE = ZONES[new URLSearchParams(location.search).get('zone')] ? new URLSearchParams(location.search).get('zone') : 'swanston';
+const skyBlend = new Int32Array(W * H);
 
 const DINGO = [0, 0.25, 0.5, 0.75].map(dingoBackSprite);
 const BEST_KEY = 'tram-surfer:best';
@@ -37,12 +41,12 @@ function setState(s) {
 }
 
 function newRun() {
-  street = new Street();
   const seed = (Math.random() * 2 ** 31) | 0;
   run = new Run(seed, (e, arg) => {
     sound.play(e);
     if (e === 'crash') sound.muffle(0.75);
-  });
+  }, { startZone: START_ZONE });
+  street = new Street(run);
   sound.newRun(seed);
   setState('play');
 }
@@ -135,11 +139,43 @@ document.addEventListener('visibilitychange', () => { if (document.hidden && sta
 
 // --- drawing ------------------------------------------------------------------------------
 
+/** The sky crossfades over 50 m as you run from one zone into the next. */
+function sky(hor) {
+  const p = run.p;
+  const a = run.zoneAt(p.z - 25), b = run.zoneAt(p.z + 25);
+  if (a === b) return skyFor(ZONES[a], hor);
+  const zb = run.zones.find((zn) => zn.id === b && zn.z0 <= p.z + 25 && zn.z0 > p.z - 25);
+  const k = zb ? Math.min(1, Math.max(0, (p.z + 25 - zb.z0) / 50)) : 1;
+  const sa = skyFor(ZONES[a], hor), sb = skyFor(ZONES[b], hor);
+  for (let i = 0; i < skyBlend.length; i++) skyBlend[i] = mix(sa[i], sb[i], k);
+  return skyBlend;
+}
+
+/** A surfboard under whoever is on the river. */
+function board(x, z, t) {
+  scene.floor(0.04, x - 0.35, x + 0.35, z - 0.9, z + 0.8, (bx, bz) => {
+    const u = (bx - x) / 0.35, v = (bz - z) / 0.85;
+    if (u * u + v * v * (v > 0 ? 1.6 : 1) > 1) return -1;
+    return Math.abs(u) < 0.12 ? 0xe8303c : 0xfffbe0;
+  }, TAG.RUNNER);
+  // wake
+  scene.floor(0.02, x - 0.9, x + 0.9, z - 3, z - 0.8, (bx, bz) => {
+    const d = Math.abs(Math.abs(bx - x) - (z - 0.8 - bz) * 0.3);
+    return d < 0.08 && ((bz * 4 + t * 20) | 0) % 3 ? 0xf0efeb : -1;
+  }, TAG.RUNNER);
+}
+
 function drawWorld(dt) {
   const cam = run.camera();
   scene.hor = cam.hor;
-  scene.begin(cam, S.skyFor(cam.hor));
+  clock.t = run.time;
   const p = run.p, t = run.time;
+  const here = ZONES[run.zoneAt(p.z)];
+  scene.fogc = here.fogc;
+  scene.fogk = here.fogk;
+  scene.env = run.zones.map((zn) => ({ z0: zn.z0, z1: zn.z1, fogc: ZONES[zn.id].fogc, fogk: ZONES[zn.id].fogk, night: !!ZONES[zn.id].night }));
+  scene.begin(cam, sky(cam.hor));
+  const onWater = (x, z, y) => ZONES[run.zoneAt(z)].water && y < 0.3;
 
   // the kid, with a shadow on whatever he is over
   const air = !p.grounded;
@@ -147,7 +183,12 @@ function drawWorld(dt) {
   if (p.roll > 0) { spr = RUNNER.roll; w = 0.8; }
   else if (air) spr = RUNNER.jump;
   else if (Math.floor(t * run.speed * 0.6) % 2) spr = RUNNER.runB;
-  scene.sprite(spr, p.x, p.y, p.z, w, TAG.RUNNER);
+  const surfing = onWater(p.x, p.z, p.y);
+  if (surfing) {
+    if (p.roll <= 0) spr = RUNNER.runA;
+    board(p.x, p.z, t);
+  }
+  scene.sprite(spr, p.x, p.y + (surfing ? 0.08 + Math.sin(t * 6) * 0.04 : 0), p.z, w, TAG.RUNNER);
   const sy = p.support + 0.02, sr = Math.max(0.3, 0.55 - (p.y - p.support) * 0.08);
   scene.floor(sy, p.x - 0.6, p.x + 0.6, p.z - 0.4, p.z + 0.4, (x, z) => {
     const d = ((x - p.x) / sr) ** 2 + ((z - p.z) / (sr * 0.55)) ** 2;
@@ -159,18 +200,20 @@ function drawWorld(dt) {
   if (dg.gap < 7.3) {
     const ds = DINGO[Math.floor(t * 12) % 4];
     const hop = run.over ? Math.sin(dg.pounce * Math.PI) * 1.2 : Math.abs(Math.sin(t * 12)) * 0.12;
-    scene.sprite(ds, dg.x, dg.y + hop, p.z - dg.gap, 1.15, TAG.RUNNER);
+    const dz = p.z - dg.gap;
+    if (onWater(dg.x, dz, dg.y) && !run.over) board(dg.x, dz, t);
+    scene.sprite(ds, dg.x, dg.y + hop, dz, 1.15, TAG.RUNNER);
   }
 
   for (const c of run.coinList) if (c.z > p.z - 1 && c.z < p.z + 120) drawCoin(scene, c, t);
-  for (const b of run.barriers) if (b.z > p.z - 1) drawBarrier(scene, b);
+  for (const b of run.barriers) if (b.z > p.z - 1) drawBarrier(scene, b, t, !!ZONES[run.zoneAt(b.z)].night);
   for (const r of run.ramps) if (r.z + r.len > scene.cz) drawRamp(scene, r);
   const trams = run.trams.filter((tr) => tr.z + tr.L > scene.cz && tr.z < scene.cz + 240).sort((a, b) => a.z - b.z);
-  for (const tr of trams) drawTram(scene, tr);
+  for (const tr of trams) drawTram(scene, tr, !!ZONES[run.zoneAt(tr.z)].night);
   street.draw(scene);
   scene.outlines();
   S.speedLines(frame, cam.hor, t, run.speed);
-  S.petals(frame, t, dt);
+  if (here.id === 'swanston' || here.id === 'bourke') S.petals(frame, t, dt);
 }
 
 let last = performance.now();
@@ -201,7 +244,7 @@ function loop(now) {
     } else if (state === 'over') run.update(dt);
     drawWorld(state === 'paused' ? 0 : dt);
     if (state === 'over') S.gameOver(frame, btns, run, best, stateT);
-    else S.hud(frame, btns, run, sound, volFlash);
+    else S.hud(frame, btns, run, sound, volFlash, ZONES[run.zoneAt(run.p.z)]);
     if (state === 'paused') S.pauseMenu(frame, btns, sound);
   }
   frame.present(ctx, imageData, out32);

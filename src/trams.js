@@ -7,6 +7,7 @@
 // y up from the rail.
 
 import { hex, scale, hsh } from './gfx.js';
+import { EMIS } from './render.js';
 
 const c = hex;
 const fm = (a, m) => ((a % m) + m) % m;
@@ -221,22 +222,87 @@ function eSide(zl, y, L) {
   return L.body;
 }
 
+// --- Yarra ferry ------------------------------------------------------------------
+// Stands in for a tram on the river: same footprint, and you can run on its roof.
+
+const F = {
+  hull: c('#f2f2ee'), water: c('#1a5a7a'), rail: c('#c4c8cc'), win: c('#24323e'), glint: c('#4a6478'),
+  deck: c('#d8ccb4'), plank: c('#bfb09a'), edge: c('#3c465c'), buoy: c('#ff8a3a'),
+};
+
+function fFront(lx, y, L) {
+  const Wd = 2.7, Hh = 3.0;
+  if (roundTop(lx, y, Wd, Hh, 0.4)) return -1;
+  // the bow narrows towards the waterline
+  const inset = y < 1.1 ? (1.1 - y) * 0.5 : 0;
+  if (lx < inset || lx > Wd - inset) return -1;
+  if (y < 0.35) return F.water;
+  if (y >= 0.75 && y < 0.92) return L.band;
+  if (y < 1.1) return F.hull;
+  if (y < 1.25) return F.rail;
+  if (y >= 1.5 && y < 2.3 && lx > 0.2 && lx < Wd - 0.2 && fm(lx - 0.2, 0.6) > 0.08)
+    return fm(lx * 1.1 - y * 0.8, 1) < 0.15 ? F.glint : F.win;
+  if (y >= 2.55 && y < 2.7) return L.band;
+  if (Math.hypot(lx - 0.45, y - 1.9) < 0.18) return F.buoy;
+  return F.hull;
+}
+
+function fSide(zl, y, L) {
+  if (y < 1.1 && zl < 2.2 && y < (2.2 - zl) * 0.5) return -1; // raked bow
+  if (y < 0.35) return F.water;
+  if (y >= 0.75 && y < 0.92) return L.band;
+  if (y < 1.1) {
+    for (let k = 3; k < 15; k += 2) if (Math.hypot(zl - k, y - 0.55) < 0.14) return F.win;
+    return F.hull;
+  }
+  if (y < 1.25) return F.rail;
+  if (y >= 2.55 && y < 2.7) return L.band;
+  if (y >= 1.5 && y < 2.3 && zl > 1.5 && zl < 15 && fm(zl, 1.2) > 0.12) return fm(zl * 0.5 + y * 0.9, 1) < 0.15 ? F.glint : F.win;
+  return F.hull;
+}
+
+function fRoof(lx, zl) {
+  if (lx < 0.12 || lx > 2.58) return F.edge;
+  return fm(zl, 0.4) < 0.05 ? F.plank : F.deck;
+}
+
+LIVERIES.ferry = { band: c('#1a5a7a') };
+LIVERIES.ferry2 = { band: c('#2d6a3e') };
+
+// --- night ---------------------------------------------------------------------------
+// At night, windows, headlights and destination boards light up. The renderer
+// treats colours with the EMIS bit set as light sources: no darkening, less fog.
+
+const LIT = c('#ffd98a') | EMIS;
+const GLOWS = new Map();
+for (const g of [K.glass, K.glint, K.zglass, K.zglint, K.gglass, K.gglint, K.gws, K.gwsg, K.ews, F.win, F.glint]) GLOWS.set(g, LIT);
+for (const g of [K.lamp, K.head, K.dot, K.txt]) GLOWS.set(g, g | EMIS);
+const nightify = (v) => GLOWS.get(v) ?? v;
+
 export const CLASSES = {
   W: { L: 14.1, W: 2.7, H: 3.2, front: wFront, side: wSide, roof: wRoof },
   Z: { L: 16.6, W: 2.67, H: 3.4, front: zFront, side: zSide, roof: zRoof },
   E: { L: 33.5, W: 2.65, H: 3.45, front: eFront, side: eSide, roof: gRoof },
   G: { L: 33.0, W: 2.65, H: 3.45, front: gFront, side: gSide, roof: gRoof },
+  F: { L: 16.0, W: 2.7, H: 3.0, front: fFront, side: fSide, roof: fRoof },
 };
 
 /** Draw a tram whose front is at world z = zf, centred on x = lane. */
-export function drawTram(s, tram) {
+export function drawTram(s, tram, night = false) {
   const K2 = CLASSES[tram.kind];
   const L = LIVERIES[tram.livery];
   const x0 = tram.x - K2.W / 2, x1 = tram.x + K2.W / 2;
   const zf = tram.z, Hh = K2.H;
-  s.front(zf, x0, x1, 0, Hh, (a, b) => K2.front(a - x0, b, L), 4);
-  if (s.cx < x0) s.side(x0, zf, zf + K2.L, 0, Hh - 0.15, (a, b) => { const v = K2.side(a - zf, b, L); return v < 0 ? v : scale(v, 0.92); }, 4);
-  if (s.cx > x1) s.side(x1, zf, zf + K2.L, 0, Hh - 0.15, (a, b) => { const v = K2.side(a - zf, b, L); return v < 0 ? v : scale(v, 0.78); }, 4);
+  const N = night ? nightify : (v) => v;
+  const side = (sh) => (a, b) => {
+    const v = K2.side(a - zf, b, L);
+    if (v < 0) return v;
+    const n = N(v);
+    return n & EMIS ? n : scale(v, sh);
+  };
+  s.front(zf, x0, x1, 0, Hh, (a, b) => { const v = K2.front(a - x0, b, L); return v < 0 ? v : N(v); }, 4);
+  if (s.cx < x0) s.side(x0, zf, zf + K2.L, 0, Hh - 0.15, side(0.92), 4);
+  if (s.cx > x1) s.side(x1, zf, zf + K2.L, 0, Hh - 0.15, side(0.78), 4);
   s.floor(Hh - 0.12, x0 + 0.05, x1 - 0.05, zf + 0.2, zf + K2.L - 0.05, (a, b) => K2.roof(a - x0, b - zf, L), 4);
 }
 

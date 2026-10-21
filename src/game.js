@@ -3,6 +3,7 @@
 
 import { LANES } from './street.js';
 import { CLASSES } from './trams.js';
+import { SCHEDULE, ZONE_SECONDS } from './zones.js';
 
 const G = 30;            // gravity, m/s²
 const JUMP_V = 9.6;      // ~1.5 m jump
@@ -19,9 +20,12 @@ const DINGO_WARN = 3.2;  // how close the dingo stays while you're in danger
 const KINDS = [
   ['W', 'W'], ['W', 'Wcc'], ['Z', 'Z'], ['Z', 'Z'], ['E', 'E'], ['G', 'G'],
 ];
+const FERRIES = [['F', 'ferry'], ['F', 'ferry2']];
+
+const speedAt = (t) => 13 + 15 * (1 - Math.exp(-t / 160));
 
 export class Run {
-  constructor(seed, events = () => {}) {
+  constructor(seed, events = () => {}, { startZone = 'swanston' } = {}) {
     this.seed = seed;
     this.emit = events;
     let s = seed >>> 0 || 1;
@@ -45,6 +49,10 @@ export class Run {
     this.coinList = [];
     this.genZ = 25;
     this.slices = 0;
+    // stretches of the run: Swanston St first, then the others at random
+    this.zones = [{ id: startZone, z0: -100, z1: Infinity, plan: this.planLength(startZone, 0) }];
+    this.seen = [startZone];
+    this.genZone = startZone;
     this.camSupport = 0;
     this.generate();
   }
@@ -96,7 +104,59 @@ export class Run {
     while (this.genZ < this.p.z + 280) this.slice();
   }
 
+  // ---------------------------------------------------------------------------
+  // zones
+
+  zoneAt(z) {
+    const zs = this.zones;
+    for (let i = zs.length - 1; i > 0; i--) if (z >= zs[i].z0) return zs[i].id;
+    return zs[0].id;
+  }
+
+  /** Any zone but the last two seen, so none repeats until two others have come by. */
+  nextZone() {
+    const recent = this.seen.slice(-2);
+    return this.pick(SCHEDULE.filter((id) => !recent.includes(id)));
+  }
+
+  /** Metres that will take about the zone's planned seconds to run, at the speed you'll be going then. */
+  planLength(id, z0) {
+    const tAt = this.time + Math.max(0, z0 - this.p.z) / Math.max(1, this.speed);
+    let m = 0;
+    for (let t = 0; t < ZONE_SECONDS[id]; t += 0.5) m += speedAt(tAt + t) * 0.5;
+    return m;
+  }
+
+  get onRiver() {
+    return this.genZone === 'yarra';
+  }
+
+  kind() {
+    return this.pick(this.onRiver ? FERRIES : KINDS);
+  }
+
+  /** A low or high obstacle: roadworks barriers on the streets, crates and footbridges on the river. */
+  barrier(ln, z, high) {
+    if (!this.onRiver) return this.barriers.push({ x: LANES[ln], z, high });
+    if (!high) return this.barriers.push({ x: LANES[ln], z, high: false, style: 'crate' });
+    // a footbridge crosses the whole river
+    if (this.barriers.some((b) => b.style === 'bridge' && b.z === z)) return;
+    for (const x of LANES) this.barriers.push({ x, z, high: true, style: 'bridge' });
+  }
+
   slice() {
+    let zn = this.zones[this.zones.length - 1];
+    if (this.genZ > zn.z0 + zn.plan) {
+      // start the next zone with a clear run-in
+      const z0 = this.genZ + 10;
+      zn.z1 = z0;
+      const id = this.nextZone();
+      this.seen.push(id);
+      zn = { id, z0, z1: Infinity, plan: this.planLength(id, z0) };
+      this.zones.push(zn);
+      this.genZ = z0 + 8;
+    }
+    this.genZone = zn.id;
     const gap = Math.max(14, this.speed * 1.2);
     const z = this.genZ + gap;
     const d = this.p.z;
@@ -138,15 +198,14 @@ export class Run {
     const rampLen = 9;
     let end = z;
     // ramp lane: ramp, then one or two trams nose to tail with a small hop
-    const k1 = this.pick(KINDS);
-    const t1 = this.addTram(rampLane, z + rampLen, k1);
-    this.ramps.push({ x: LANES[rampLane], z, len: rampLen, h: t1.H, tram: t1 });
+    const t1 = this.addTram(rampLane, z + rampLen, this.kind());
+    this.ramps.push({ x: LANES[rampLane], z, len: rampLen, h: t1.H, tram: t1, gangplank: this.onRiver });
     for (let cz = z + 1; cz < z + rampLen; cz += 2) this.coinList.push({ x: LANES[rampLane], y: ((cz - z) / rampLen) * t1.H + 0.45, z: cz });
     this.coinLine(LANES[rampLane], t1.z + 1, t1.z + t1.L, t1.H + 0.3);
     end = t1.z + t1.L;
     if (!first && this.rand() < 0.5) {
       // nose to tail with a short hop between roofs
-      const t2 = this.addTram(rampLane, end + 1.2 + this.rand(), this.pick(KINDS));
+      const t2 = this.addTram(rampLane, end + 1.2 + this.rand(), this.kind());
       this.coinLine(LANES[rampLane], t2.z + 1, t2.z + t2.L, t2.H + 0.3);
       end = t2.z + t2.L;
     }
@@ -158,12 +217,12 @@ export class Run {
         continue;
       }
       if (i < nTrams) {
-        const t = this.addTram(ln, z + rampLen + this.rand() * 8, this.pick(KINDS));
+        const t = this.addTram(ln, z + rampLen + this.rand() * 8, this.kind());
         end = Math.max(end, t.z + t.L);
       } else if (this.rand() < 0.6) {
         const bz = z + 6 + this.rand() * 14;
-        const high = this.rand() < 0.4;
-        this.barriers.push({ x: LANES[ln], z: bz, high });
+        const high = !this.onRiver && this.rand() < 0.4;
+        this.barrier(ln, bz, high);
         if (!high) this.coinArc(LANES[ln], bz, 1.2);
       } else this.coinLine(LANES[ln], z + 4, z + 20);
     }
@@ -174,6 +233,13 @@ export class Run {
     let zz = z;
     const rows = 2 + Math.floor(this.rand() * 2);
     for (let r = 0; r < rows; r++) {
+      if (this.onRiver && this.rand() < 0.35) {
+        // a footbridge: roll under it in any lane
+        this.barrier(0, zz, true);
+        this.coinLine(LANES[Math.floor(this.rand() * 3)], zz - 5, zz + 6);
+        zz += Math.max(14, this.speed * 1.2);
+        continue;
+      }
       const free = Math.floor(this.rand() * 3);
       for (let ln = 0; ln < 3; ln++) {
         const roll = this.rand();
@@ -181,8 +247,8 @@ export class Run {
           this.coinLine(LANES[ln], zz - 4, zz + 6);
           continue;
         }
-        const high = roll < 0.45;
-        this.barriers.push({ x: LANES[ln], z: zz, high });
+        const high = !this.onRiver && roll < 0.45;
+        this.barrier(ln, zz, high);
         if (!high && this.rand() < 0.5) this.coinArc(LANES[ln], zz, 1.2);
       }
       zz += Math.max(14, this.speed * 1.2);
@@ -194,17 +260,17 @@ export class Run {
     // a tram comes down the line at you; its lane is kept clear for it
     const ln = Math.floor(this.rand() * 3);
     const lead = 40;
-    const t = this.addTram(ln, z + lead, this.pick(KINDS), -9 - this.rand() * 4);
+    const t = this.addTram(ln, z + lead, this.kind(), -9 - this.rand() * 4);
     let end = t.z + t.L;
     const others = [0, 1, 2].filter((l) => l !== ln);
     const parkLane = this.rand() < 0.5 ? others[Math.floor(this.rand() * 2)] : -1;
     for (const o of others) {
       if (o === parkLane) {
-        const pt = this.addTram(o, z + 8 + this.rand() * 10, this.pick(KINDS));
+        const pt = this.addTram(o, z + 8 + this.rand() * 10, this.kind());
         end = Math.max(end, pt.z + pt.L);
       } else {
         this.coinLine(LANES[o], z + 2, z + lead);
-        if (this.rand() < 0.5) this.barriers.push({ x: LANES[o], z: z + lead + 8, high: this.rand() < 0.5 });
+        if (this.rand() < 0.5) this.barrier(o, z + lead + 8, !this.onRiver && this.rand() < 0.5);
       }
     }
     this.genZ = end;
@@ -273,7 +339,7 @@ export class Run {
       if (!t.moving && t.go && t.z - p.z < 75) {
         t.moving = true;
         t.vz = t.go;
-        this.emit('bell', t);
+        this.emit(t.kind === 'F' ? 'horn' : 'bell', t);
       }
       if (t.moving) t.z += t.vz * dt;
     }
@@ -360,6 +426,7 @@ export class Run {
     this.ramps = this.ramps.filter((r) => r.z + r.len > behind);
     this.barriers = this.barriers.filter((b) => b.z > behind);
     this.coinList = this.coinList.filter((c) => c.z > behind && !c.taken);
+    while (this.zones.length > 1 && this.zones[1].z0 < behind - 60) this.zones.shift();
     this.generate();
   }
 

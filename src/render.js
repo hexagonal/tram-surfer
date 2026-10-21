@@ -9,7 +9,11 @@
 //
 // Texture functions return a 0xRRGGBB colour, or -1 for transparent.
 
-import { W, H, hex, mix } from './gfx.js';
+import { W, H, hex, mix, scale } from './gfx.js';
+
+/** Colours with this bit set are light sources: never darkened by night, less fogged. */
+export const EMIS = 0x1000000;
+const NIGHT_TINT = hex('#141a2a');
 
 export const TAG = { NONE: 0, ROAD: 1, FOOT: 2, BUILD: 3, OBJ: 4, RUNNER: 5 };
 
@@ -26,9 +30,17 @@ export class Scene {
     this.tag = new Uint8Array(W * H);
     this.fogc = hex(fog);
     // fog amount by distance, in 0.25 m steps
-    this.fogk = new Float32Array(1601);
-    for (let i = 0; i <= 1600; i++) this.fogk[i] = 1 - Math.exp(-(i * 0.25) / fogd);
+    this.fogk = Scene.fogTable(fogd);
     this.cx = 0; this.cy = 6.4; this.cz = 0;
+    // stretches of the street with their own fog and lighting (the zones):
+    // [{ z0, z1, fogc, fogk, night }], looked up by each pixel's depth
+    this.env = [];
+  }
+
+  static fogTable(fogd) {
+    const k = new Float32Array(1601);
+    for (let i = 0; i <= 1600; i++) k[i] = 1 - Math.exp(-(i * 0.25) / fogd);
+    return k;
   }
 
   begin(cam, sky) {
@@ -39,8 +51,19 @@ export class Scene {
   }
 
   _put(i, t, c, tag, glow) {
-    const k = this.fogk[Math.min(1600, (t * 4) | 0)];
-    this.img[i] = mix(c, this.fogc, glow ? k * 0.4 : k);
+    let fogc = this.fogc, fogk = this.fogk, night = false;
+    const z = this.cz + t;
+    for (const e of this.env) if (z >= e.z0 && z < e.z1) { fogc = e.fogc; fogk = e.fogk; night = e.night; break; }
+    if (c & EMIS) {
+      c &= 0xffffff;
+      glow = true;
+    } else if (night) {
+      // lamplight falls off with distance; the kid and the dingo stay readable
+      const lit = tag === TAG.RUNNER ? 0.8 : Math.max(0.3, 0.66 - t / 300);
+      c = mix(scale(c, lit), NIGHT_TINT, 0.12);
+    }
+    const k = fogk[Math.min(1600, (t * 4) | 0)];
+    this.img[i] = mix(c, fogc, glow ? k * 0.4 : k);
     this.zb[i] = t;
     this.tag[i] = tag;
   }
@@ -123,7 +146,7 @@ export class Scene {
   }
 
   /** Billboard: (x, y) is the bottom centre, w its width in metres. */
-  sprite(spr, x, y, z, w, tag = TAG.OBJ, { flip = false, glow = false, h = 0 } = {}) {
+  sprite(spr, x, y, z, w, tag = TAG.OBJ, { flip = false, glow = false, h = 0, emis = false } = {}) {
     const { w: sw, h: sh, data } = spr;
     const hh = h || (w * sh) / sw;
     const x0 = x - w / 2;
@@ -133,7 +156,8 @@ export class Scene {
       if (flip) u = sw - 1 - u;
       let v = ((y + hh - b) / hh) * sh | 0;
       if (v < 0) v = 0; else if (v >= sh) v = sh - 1;
-      return data[v * sw + u];
+      const c = data[v * sw + u];
+      return emis && c >= 0 ? c | EMIS : c;
     }, tag, glow);
   }
 
