@@ -12,6 +12,7 @@ cel outlines, palette quantisation), then upscaled with nearest-neighbour.
 | `images/c-bourke-night.png` | Night, rain, neon | 160×120 | 16 fixed colours, dithered |
 | `images/d-stkilda-portrait.png` | Portrait / phone, summer | 180×320 | 24 colours |
 | `images/f-swanston-direction.png` | **Chosen direction:** trams-only Swanston St, 6.4 m chase-cam, Japanese signage | 320×180 | 64 colours, no dither |
+| `images/g-stkilda-direction.png` | Chosen direction on tree-lined St Kilda Rd | 320×180 | 64 colours, no dither |
 | `images/e-roster.png` | W class, City Circle W, Z class, E class, G class, runner | 400×160 | 56 colours |
 
 Each image also has a `-native.png` copy at its real resolution.

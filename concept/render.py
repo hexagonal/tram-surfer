@@ -1467,6 +1467,40 @@ def scene_f():
     save(img, "f-swanston-direction", 4)
 
 
+def scene_g():
+    """Second zone in the chosen style: tree-lined St Kilda Rd, Arts Centre style spire ahead."""
+    cam = (-3.0, 6.4, -6.5)
+    s = Scene(320, 180, 200, 58, cam)
+    add_runner(s, -3.0, 1.0, y=3.33)
+    for k in range(5):
+        add_coin(s, -3.0, 3.75, 5 + k * 3.2)
+    for k in range(5):
+        add_coin(s, 3.0, 0.7 + 1.2 * math.sin(k / 4 * math.pi), 12 + k * 2.4)
+    add_tram(s, "E", -3.0, -20)
+    add_tram(s, "W", 0.0, 4)
+    add_tram(s, "G", 0.0, 32)
+    add_tram(s, "Z", 3.0, 22)
+    add_tram(s, "W", -3.0, 30, "Wcc")
+    add_barrier(s, 3.0, 9, high=True)
+    for k in range(16):
+        add_tree(s, -7.6, 4 + k * 8, 10.0, seed=k)
+        add_tree(s, 7.6, 8 + k * 8, 10.0, seed=100 + k)
+    add_kanban(s, 1, 14, 3)
+    add_street(s, 260, seed=7, tall=0.8, tram_only=True)
+    add_skyline(s, 1300, seed=4, spire=True, eureka=False)
+    rng = random.Random(3)
+    sky_fill(s, [(0, "#2f7ee6"), (0.65, "#78c0f4"), (1.0, "#d8f0ff")],
+             clouds=[(cloud(90, 18, 1.0, rng), "#ffffff", "#b8ccf0", None),
+                     (cloud(240, 12, 0.8, rng), "#ffffff", "#b8ccf0", None)])
+    light_and_fog(s, "#cfe4f2", 230)
+    outlines(s)
+    img = speed_lines(s.img, s.hor, n=24, alpha=0.4)
+    img = quantise(img, 64)
+    hud_standard(img, "0081930", "0244", "x5", "ST KILDA RD")
+    jp_text(img, (320 - 9 * 12) // 2, 5, "セントキルダ通り", "#ffffff")
+    save(img, "g-stkilda-direction", 4)
+
+
 if __name__ == "__main__":
     scene_a()
     scene_b()
@@ -1474,3 +1508,4 @@ if __name__ == "__main__":
     scene_d()
     scene_roster()
     scene_f()
+    scene_g()
