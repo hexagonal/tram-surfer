@@ -11,6 +11,10 @@ const LANE_TIME = 0.16;
 const STEP = 0.6;        // how far below a roof you can be and still land on it
 const HALF_W = 1.33;     // half a tram's width
 const DINGO_FAR = 14;
+const DANGER_TIME = 20;  // after a stumble, a second one within this many seconds and you're caught
+const SLOW_TIME = 2.5;   // a stumble knocks your speed down, recovering over this long
+const SLOW_BY = 0.4;     // fraction of speed lost right after a stumble
+const DINGO_WARN = 3.2;  // how close the dingo stays while you're in danger
 
 const KINDS = [
   ['W', 'W'], ['W', 'Wcc'], ['Z', 'Z'], ['Z', 'Z'], ['E', 'E'], ['G', 'G'],
@@ -30,7 +34,8 @@ export class Run {
     this.mult = 1;
     this.p = { lane: 1, prevLane: 1, x: 0, y: 0, vy: 0, z: 0, roll: 0, grounded: true, support: 0, laneT: 1 };
     this.dingo = { gap: 1.6, x: 0, y: 0, jumpT: 0, pounce: 0 };
-    this.stumbleT = 0;
+    this.stumbleT = 0;   // seconds of danger left: stumble again before it runs out and you're caught
+    this.slowT = 0;
     this.over = false;
     this.overT = 0;
     this.crash = null;
@@ -225,10 +230,11 @@ export class Run {
 
   stumble() {
     const p = this.p;
-    if (this.dingo.gap < 7 && this.stumbleT > 0) return this.caught('stumble');
+    if (this.stumbleT > 0) return this.caught('stumble');
     this.emit('stumble');
-    this.stumbleT = 6;
-    this.dingo.gap = Math.min(this.dingo.gap, 2.4);
+    this.stumbleT = DANGER_TIME;
+    this.slowT = SLOW_TIME;
+    this.dingo.gap = Math.min(this.dingo.gap, 2.2);
     p.lane = p.prevLane;
     p.laneT = 0.3;
   }
@@ -254,7 +260,8 @@ export class Run {
     }
     const p = this.p;
     this.speed = 13 + 15 * (1 - Math.exp(-this.time / 160));
-    const v = this.speed;
+    if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dt);
+    const v = this.speed * (1 - SLOW_BY * (this.slowT / SLOW_TIME));
     const prevZ = p.z;
     p.z += v * dt;
     this.dist += v * dt;
@@ -338,8 +345,12 @@ export class Run {
 
     // the dingo keeps coming
     const dg = this.dingo;
-    if (this.stumbleT > 0) this.stumbleT -= dt;
-    else dg.gap = Math.min(DINGO_FAR, dg.gap + dt * 1.1);
+    // after a stumble he stays right behind you, in view, until the danger passes
+    if (this.stumbleT > 0) {
+      this.stumbleT = Math.max(0, this.stumbleT - dt);
+      const want = this.slowT > 0 ? 2.2 : DINGO_WARN + Math.sin(this.time * 3) * 0.3;
+      dg.gap += (want - dg.gap) * Math.min(1, dt * 2);
+    } else dg.gap = Math.min(DINGO_FAR, dg.gap + dt * 1.1);
     dg.x += (p.x - dg.x) * Math.min(1, dt * 6);
     dg.y += (p.y - dg.y) * Math.min(1, dt * 5);
 

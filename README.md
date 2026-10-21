@@ -17,9 +17,11 @@ First playable version: Swanston St, an endless run with three tram lanes.
   G class trams, parked or coming down the line at you (listen for the bell)
 - Roadworks barriers to jump over or roll under, coins, a score multiplier
   that grows with distance, and a best score saved in the browser
-- Pup, the chibi dingo: bump the side of a tram and he catches up; do it again
-  before he drops back and he's got you. Run into a tram or a barrier head-on
-  and it's game over
+- Pup, the chibi dingo: bump the side of a tram and you stumble, which slows
+  you down and brings him right up behind you, where he stays in view as a
+  warning. Stumble again within 20 seconds and he chomps you; after 20 clean
+  seconds he drops back and a stumble only slows you again. Run into a tram or
+  a barrier head-on and it's game over
 - Intro animation (SURFER, DINGO, chomp chomp), start screen with the story,
   pause menu and game over screen
 - Procedural lofi music (`music/lofi.js`), new music each run, muffled when
