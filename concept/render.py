@@ -198,6 +198,8 @@ LIVERIES = {
     "W": dict(body="#2d6a3e", band="#e8c050", door="#245a35", roof="#6e665e", walk="#8c7658"),
     "Wcc": dict(body="#7c1f28", band="#ead08a", door="#63161e", roof="#5e544e", walk="#8c7658"),
     "G": dict(body="#efefea", stripe="#6cb02c", roof="#c4c8cc"),
+    "Z": dict(body="#d2a02a", band="#5a3c1e", door="#b8861e", roof="#8a847a"),
+    "E": dict(body="#f2f2ee", stripe="#78be20", roof="#c4c8cc"),
 }
 
 
@@ -356,10 +358,151 @@ def g_roof(lx, zl, liv):
     return rgb * 1.08
 
 
+def z_front(lx, y, liv, night):
+    W, H = 2.67, 3.4
+    n = len(lx)
+    rgb = fill(n, liv["body"])
+    al = np.ones(n, bool)
+    em = np.zeros(n, bool)
+    under = y < 0.3
+    rgb[under] = C("#18181c")
+    al[under & ((lx < 0.4) | (lx > W - 0.4))] = False
+    rgb[(y >= 0.3) & (y < 0.55)] = C("#3a2e22")
+    rgb[(y >= 1.15) & (y < 1.27)] = C(liv["band"])
+    for hx in (0.45, W - 0.45):
+        hl = (np.abs(lx - hx) < 0.16) & (np.abs(y - 0.85) < 0.09)
+        rgb[(np.abs(lx - hx) < 0.2) & (np.abs(y - 0.85) < 0.13)] = C("#2a2a2a")
+        rgb[hl] = C("#fff6c8")
+        em |= hl & night
+    ws = (y >= 1.5) & (y < 2.65) & (lx > 0.14) & (lx < W - 0.14)
+    split = np.abs(lx - W / 2) < 0.05
+    if night:
+        rgb[ws] = C("#ffd98a")
+        em |= ws & ~split
+    else:
+        rgb[ws] = C("#4e6e88")
+        rgb[ws & (((lx * 1.2 + y * 0.9) % 1.0) < 0.2)] = C("#a8c8e0")
+    rgb[ws & split] = C("#2a2a2a")
+    rgb[(y >= 2.65) & (y < 2.75)] = C(liv["band"])
+    box = (y >= 2.82) & (y < 3.18) & (((lx > 0.3) & (lx < 1.9)) | ((lx > 2.0) & (lx < 2.4)))
+    rgb[box] = C("#101014")
+    txt = box & (y > 2.9) & (y < 3.1) & (hsh(lx * 16, y * 30) > 0.5) & ((lx < 1.8) | (lx > 2.08)) & (lx > 0.4)
+    rgb[txt] = C("#fff2c0")
+    em |= txt & night
+    al &= ~round_top(lx, y, W, H, 0.18)
+    return rgb, al, em
+
+
+def z_side(zl, y, liv, night, shade):
+    n = len(zl)
+    rgb = fill(n, liv["body"])
+    al = np.ones(n, bool)
+    em = np.zeros(n, bool)
+    under = y < 0.3
+    rgb[under] = C("#141416")
+    keep = np.zeros(n, bool)
+    for bc in (3.4, 13.2):
+        keep |= under & (np.abs(zl - bc) < 1.3) & (y > 0.18)
+        for off in (-0.85, 0.85):
+            d = np.hypot(zl - (bc + off), y - 0.28)
+            rgb[under & (d < 0.28)] = C("#262628")
+            rgb[under & (d < 0.09)] = C("#8a8a8a")
+            keep |= under & (d < 0.28)
+    al[under & ~keep] = False
+    rgb[(y >= 0.3) & (y < 0.55)] = C("#3a2e22")
+    rgb[(y >= 1.15) & (y < 1.27)] = C(liv["band"])
+    door = np.zeros(n, bool)
+    for a, b in ((1.0, 2.3), (7.6, 9.0), (14.3, 15.6)):
+        door |= (zl > a) & (zl < b) & (y >= 0.55) & (y < 2.7)
+    rgb[door] = C(liv["door"])
+    win = (y >= 1.5) & (y < 2.6) & (((zl - 0.3) % 1.3) > 0.14) & ~door
+    dwin = door & (y >= 1.0) & (y < 2.55) & (np.abs(zl - np.round(zl * 2) / 2) > 0.04)
+    glass = win | dwin
+    if night:
+        rgb[glass] = C("#ffd98a")
+        em |= glass
+    else:
+        rgb[glass] = C("#4e6e88")
+        rgb[glass & (((zl * 0.7 + y * 0.9) % 1.0) < 0.18)] = C("#a8c8e0")
+    rgb[(y >= 2.65) & (y < 2.75)] = C(liv["band"])
+    rgb[y >= 3.15] = C(liv["roof"])
+    rgb[~em] *= shade
+    return rgb, al, em
+
+
+def z_roof(lx, zl, liv):
+    n = len(lx)
+    rgb = fill(n, liv["roof"])
+    rgb[(zl % 1.6) < 0.08] *= 0.8
+    vent = (np.abs(lx - 1.33) < 0.35) & ((zl % 4.0) > 1.2) & ((zl % 4.0) < 2.2)
+    rgb[vent] = C("#6a665e")
+    return rgb * 1.1
+
+
+def e_front(lx, y, liv, night):
+    W, H = 2.65, 3.45
+    n = len(lx)
+    rgb = fill(n, liv["body"])
+    al = y >= 0.1
+    em = np.zeros(n, bool)
+    rgb[y < 0.6] = C("#34383e")
+    swoosh = np.abs(y - (0.72 + 0.4 * lx / W)) < 0.11
+    rgb[swoosh] = C(liv["stripe"])
+    mask = (y >= 1.25) & (y < 3.28) & (lx > 0.08) & (lx < W - 0.08)
+    rgb[mask] = C("#121418")
+    marg = 0.2 + (y - 1.4) * 0.1
+    ws = (y >= 1.4) & (y < 2.85) & (lx > marg) & (lx < W - marg)
+    rgb[ws] = C("#24323e")
+    rgb[ws & (((lx * 1.1 - y * 0.8) % 1.0) < 0.12)] = C("#4a6478")
+    for hx in (0.3, W - 0.3):
+        hl = (np.abs(lx - hx) < 0.17) & (np.abs(y - (1.32 + 0.0)) < 0.05)
+        rgb[hl] = C("#fffbe0")
+        em |= hl & night
+    dest = (y >= 2.95) & (y < 3.2) & (lx > 0.35) & (lx < W - 0.35)
+    dots = dest & ((lx * 22) % 1 < 0.55) & ((y * 40) % 1 < 0.6) & (hsh(lx * 8, y * 12) > 0.35)
+    rgb[dots] = C("#ffa828")
+    em |= dots
+    al &= ~round_top(lx, y, W, H, 0.45)
+    return rgb, al, em
+
+
+def e_side(zl, y, liv, night, shade):
+    n = len(zl)
+    rgb = fill(n, liv["body"])
+    al = y >= 0.1
+    em = np.zeros(n, bool)
+    rgb[y < 0.5] = C("#34383e")
+    rgb[np.abs(y - (0.72 + 0.012 * (zl % 11.0))) < 0.1] = C(liv["stripe"])
+    band = (y >= 1.0) & (y < 2.7)
+    rgb[band] = C("#121418")
+    door = np.zeros(n, bool)
+    for c in (2.6, 8.4, 16.5, 24.6, 30.4):
+        door |= (np.abs(zl - c) < 0.68) & (y >= 0.45) & (y < 2.75)
+    glass = (band & ((zl % 1.6) > 0.12)) | door
+    if night:
+        rgb[glass] = C("#ffe6b0")
+        em |= glass
+    else:
+        rgb[glass] = C("#24323e")
+        rgb[glass & (((zl * 0.5 + y * 0.9) % 1.0) < 0.15)] = C("#4a6478")
+    for c in (2.6, 8.4, 16.5, 24.6, 30.4):
+        edge = door & ((np.abs(np.abs(zl - c) - 0.64) < 0.05) | (np.abs(zl - c) < 0.03))
+        rgb[edge] = C(liv["stripe"])
+    for c in (11.0, 22.0):
+        rgb[np.abs(zl - c) < 0.18] = C("#2a2c30")
+    rgb[y >= 3.3] = C(liv["roof"])
+    rgb[~em] *= shade
+    return rgb, al, em
+
+
 def add_tram(s, kind, lane, zf, livery=None):
     liv = LIVERIES[livery or kind]
     if kind == "W":
         L, Wd, Hh, front, side, roof = 14.1, 2.7, 3.2, w_front, w_side, w_roof
+    elif kind == "Z":
+        L, Wd, Hh, front, side, roof = 16.6, 2.67, 3.4, z_front, z_side, z_roof
+    elif kind == "E":
+        L, Wd, Hh, front, side, roof = 33.5, 2.65, 3.45, e_front, e_side, g_roof
     else:
         L, Wd, Hh, front, side, roof = 33.0, 2.65, 3.45, g_front, g_side, g_roof
     x0, x1 = lane - Wd / 2, lane + Wd / 2
@@ -961,7 +1104,7 @@ def scene_a():
     add_tram(s, "W", -3.0, 20)
     add_tram(s, "G", 3.0, 16)
     add_tram(s, "W", 0.0, 58, "Wcc")
-    add_tram(s, "W", -3.0, 84)
+    add_tram(s, "Z", -3.0, 84)
     add_stop_sign(s, -6.8, 30)
     add_street(s, 150, seed=1, tall=0.6)
     add_station(s, 150)
@@ -988,7 +1131,7 @@ def scene_b():
     add_tram(s, "G", 3.0, -20)
     add_tram(s, "W", 0.0, 6)
     add_tram(s, "W", 0.0, 27, "Wcc")
-    add_tram(s, "G", -3.0, 14)
+    add_tram(s, "E", -3.0, 14)
     add_tram(s, "W", 3.0, 26)
     add_tram(s, "G", 3.0, 52)
     add_barrier(s, -3.0, 52, high=True)
@@ -1089,22 +1232,24 @@ def scene_d():
 
 
 def scene_roster():
-    """Line-up of the three tram designs plus the runner, 3/4 view."""
-    s = Scene(320, 160, 820, 52, (-1.5, 4.0, -40.0))
-    add_tram(s, "W", -6.8, 0)
-    add_tram(s, "W", -2.9, 0, "Wcc")
-    add_tram(s, "G", 1.0, 0)
-    add_runner(s, 4.4, -0.5)
-    add_coin(s, 5.4, 1.0, -0.5)
-    s.hplane(0, -40, 40, -40, 80, lambda a, b, t: (fill(len(a), "#dcd4c4"), None, None), ROAD)
+    """Line-up of the five tram designs plus the runner, 3/4 view."""
+    cam = (-0.5, 4.0, -40.0)
+    s = Scene(400, 160, 620, 52, cam)
+    xs = (-11.5, -7.0, -2.5, 2.0, 6.5)
+    for x, (kind, liv) in zip(xs, (("W", None), ("W", "Wcc"), ("Z", None), ("E", None), ("G", None))):
+        add_tram(s, kind, x, 0, liv)
+    add_runner(s, 10.0, -0.5)
+    add_coin(s, 11.0, 1.0, -0.5)
+    s.hplane(0, -60, 60, -40, 80, lambda a, b, t: (fill(len(a), "#dcd4c4"), None, None), ROAD)
     sky_fill(s, [(0, "#f6efe0"), (1, "#f6efe0")])
     outlines(s)
-    img = quantise(s.img, 48)
+    img = quantise(s.img, 56)
     text(img, 6, 6, "THE ROSTER", "#2d6a3e", 2)
-    text(img, 30, 140, "W CLASS", "#2d6a3e")
-    text(img, 100, 140, "W CITY CIRCLE", "#7c1f28")
-    text(img, 188, 140, "G CLASS", "#4a8a20")
-    text(img, 250, 140, "RUNNER", "#23788c")
+    labels = (("W CLASS", "#2d6a3e"), ("W CITY CIRCLE", "#7c1f28"), ("Z CLASS", "#9a6c10"),
+              ("E CLASS", "#4a8a20"), ("G CLASS", "#4a8a20"), ("RUNNER", "#23788c"))
+    for x, (label, col) in zip(xs + (10.0,), labels):
+        sx = s.W / 2 + (x - cam[0]) * s.f / (0 - cam[2])
+        text(img, int(sx - len(label) * 2), 124, label, col)
     save(img, "e-roster", 4)
 
 
