@@ -21,9 +21,11 @@ Melbourne, which change over seamlessly mid-run.
 - Coins set the pace: each one speeds the kid up a little, and going a moment
   without one slows him back down (14 to 32 m/s). Blue coins are worth twice
   the points and twice the speed. The music speeds up and slows down with him
-- Coin trams (ferries on the Yarra) pull away as you get close, with a roof
-  full of coins: run up the ramp behind one as it sets off, or bounce off a
-  trampoline to land on it
+- Coin trams, early in every level and every 400 m or so: a ramp leads up onto
+  a raised platform (a jetty on the Yarra), and a tram (a ferry) covered in
+  coins rolls along beside it at half your speed. Catch it up and step
+  sideways onto its roof. Elsewhere, trampolines bounce you onto long coin
+  trams pulling away from you
 - Pup, the chibi dingo: bump the side of a tram and you stumble, which slows
   you down and brings him right up behind you, where he stays in view as a
   warning. Stumble again within 20 seconds and he chomps you; after 20 clean
