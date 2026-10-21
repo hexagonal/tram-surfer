@@ -13,6 +13,10 @@ import * as S from './screens.js';
 import { ZONES, skyFor, clock } from './zones.js';
 
 const canvas = document.getElementById('screen');
+// the size is set here, not only in index.html, so a cached page and a fresh
+// script (or the other way round) can never disagree about it
+canvas.width = W;
+canvas.height = H;
 const ctx = canvas.getContext('2d');
 const imageData = ctx.createImageData(W, H);
 const out32 = new Uint32Array(imageData.data.buffer);
