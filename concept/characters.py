@@ -413,14 +413,15 @@ def start_screen():
         img[y, x:x + L] = img[y, x:x + L] * 0.4 + 255 * 0.6
     # the chase: kid on the Z roof, dingo leaping the gap
     paste(img, kid_sprite(1.0), 238, int(ground - 3.4 * ppm) - 52)
-    paste(img, dingo_sprite("pup", 0.72), 132, int(ground - 3.2 * ppm) - 64)
+    paste(img, dingo_sprite("pup", 0.72), 150, int(ground - 3.2 * ppm) - 64)
     # title and story
     text(img, 10, 10, "TRAM SURFER", "#ffd23a", 3, "#1a1020")
     jp_text(img, 10, 30, "トラムサーファー", "#ffffff")
-    story = ["WHY IS THIS KID RUNNING ON", "TOP OF MELBOURNE'S TRAMS?", "",
-             "HE'S RUNNING FOR HIS LIFE.", "A WILD DINGO IS RIGHT", "BEHIND HIM!"]
-    for i, line in enumerate(story):
-        text(img, 10, 48 + i * 8, line, "#ffffff")
+    story = ["This kid is running for his life!",
+             "Across the tops of Melbourne trams!",
+             "A dingo is right behind him…"]
+    for i, line in enumerate(story):  # the pixel font is capitals only
+        text(img, 10, 50 + i * 10, line.upper(), "#ffffff")
     img = quantise(img, 64)
     w = len("PRESS START") * 4 * 2
     text(img, (W - w) // 2 + 40, 171 - 10, "PRESS START", "#ffd23a", 2)
