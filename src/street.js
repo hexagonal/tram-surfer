@@ -238,6 +238,29 @@ export function drawRamp(s, r) {
   if (s.cx > x1) s.side(x1, r.z, r.z + r.len, 0, r.h, tri, TAG.OBJ);
 }
 
+const DECK = c('#b8b4ac'), DECK_D = c('#8e8a84'), PIER = c('#6b6f78');
+
+/** A raised platform at roof height (a wooden jetty on the river), on pillars, with a yellow safety edge. */
+export function drawPlatform(s, pl) {
+  const x0 = pl.x - 1.2, x1 = pl.x + 1.2;
+  const z0 = Math.max(pl.z0, s.cz + 0.1);
+  if (z0 >= pl.z1) return;
+  const jetty = pl.jetty;
+  s.floor(pl.h, x0, x1, z0, pl.z1, (x, z) => {
+    const lx = x - x0;
+    if (lx < 0.16 || lx > 2.24) return jetty ? WOOD_D : fm(z * 1.6 + lx, 1) < 0.5 ? RAMP_Y : RAMP_K;
+    if (jetty) return fm(z, 0.45) < 0.07 ? WOOD_D : WOOD;
+    return fm(z, 1.5) < 0.06 ? DECK_D : DECK;
+  }, TAG.OBJ);
+  // the edge of the deck, and pillars every 6 m underneath
+  const side = (z, y) => {
+    if (y > pl.h - 0.35) return jetty ? WOOD_D : DECK_D;
+    return fm(z - pl.z0, 6) < 0.5 ? (jetty ? WOOD_D : PIER) : -1;
+  };
+  if (s.cx < x0) s.side(x0, z0, pl.z1, jetty ? -0.5 : 0, pl.h, side, TAG.OBJ);
+  if (s.cx > x1) s.side(x1, z0, pl.z1, jetty ? -0.5 : 0, pl.h, side, TAG.OBJ);
+}
+
 export function drawCoin(s, coin, time) {
   const spin = Math.abs(Math.cos(time * 5 + coin.z * 0.7));
   s.sprite(coin.blue ? BLUE_COIN_HI : COIN_HI, coin.x, coin.y, coin.z, 0.55 * Math.max(0.25, spin), TAG.OBJ, { glow: true, h: 0.55, emis: true });
