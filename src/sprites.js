@@ -81,7 +81,7 @@ export const RUNNER = {
   roll: scale2x(spriteFromArt(ROLL, PAL)),
 };
 
-export const COIN = spriteFromArt(`
+const COIN_ART = `
 ..kkkk..
 .kyyyyk.
 kywyyyYk
@@ -89,9 +89,11 @@ kywyyyYk
 kyyyyyYk
 kyyyyyYk
 .kYYYYk.
-..kkkk..`, PAL);
-/** The coin for the 3D view. */
+..kkkk..`;
+export const COIN = spriteFromArt(COIN_ART, PAL);
+/** The coins for the 3D view: gold, and the rarer blue ones worth double. */
 export const COIN_HI = scale2x(COIN);
+export const BLUE_COIN_HI = scale2x(spriteFromArt(COIN_ART, { ...PAL, y: '#4ab8ff', w: '#e8f8ff', Y: '#2060c0' }));
 
 export const LANTERN = scale2x(spriteFromArt(`
 ..kk..

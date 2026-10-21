@@ -17,12 +17,21 @@ const SLOW_TIME = 2.5;   // a stumble knocks your speed down, recovering over th
 const SLOW_BY = 0.4;     // fraction of speed lost right after a stumble
 const DINGO_WARN = 3.2;  // how close the dingo stays while you're in danger
 
+// pace: coins speed you up, going without them slows you down
+export const MIN_SPEED = 14, MAX_SPEED = 32;
+const START_SPEED = 16;
+const COIN_BOOST = 0.08;  // m/s per yellow coin; blue coins give twice this (and twice the points)
+const COIN_GRACE = 1.2;   // seconds without a coin before you start to slow
+const COIN_DRAG = 0.55;   // m/s lost per second after that
+
+const BOUNCE_V = 17;      // trampolines throw you ~4.8 m up, high enough for a tram roof
+const FOLLOW = 0.4;       // coin trams roll away from you at this fraction of your speed
+
 const KINDS = [
   ['W', 'W'], ['W', 'Wcc'], ['Z', 'Z'], ['Z', 'Z'], ['E', 'E'], ['G', 'G'],
 ];
 const FERRIES = [['F', 'ferry'], ['F', 'ferry2']];
 
-const speedAt = (t) => 13 + 15 * (1 - Math.exp(-t / 160));
 
 export class Run {
   constructor(seed, events = () => {}, { startZone = 'swanston' } = {}) {
@@ -31,7 +40,8 @@ export class Run {
     let s = seed >>> 0 || 1;
     this.rand = () => { s ^= s << 13; s ^= s >>> 17; s ^= s << 5; return (s >>> 0) / 4294967296; };
     this.time = 0;
-    this.speed = 13;
+    this.speed = START_SPEED;
+    this.sinceCoin = 0;
     this.dist = 0;
     this.score = 0;
     this.coins = 0;
@@ -46,6 +56,7 @@ export class Run {
     this.trams = [];
     this.ramps = [];
     this.barriers = [];
+    this.trampolines = [];
     this.coinList = [];
     this.genZ = 25;
     this.slices = 0;
@@ -119,11 +130,19 @@ export class Run {
     return this.pick(SCHEDULE.filter((id) => !recent.includes(id)));
   }
 
-  /** Metres that will take about the zone's planned seconds to run, at the speed you'll be going then. */
+  /**
+   * Metres that will take about the zone's planned seconds to run. Speed now
+   * depends on how many coins you pick up, so streets are planned at your
+   * current speed. The river must never last more than 30 s, so it is planned
+   * as if you picked up no coins at all and slowed the whole way.
+   */
   planLength(id, z0) {
-    const tAt = this.time + Math.max(0, z0 - this.p.z) / Math.max(1, this.speed);
-    let m = 0;
-    for (let t = 0; t < ZONE_SECONDS[id]; t += 0.5) m += speedAt(tAt + t) * 0.5;
+    // on the streets most players speed up a little as they go
+    let v = id === 'yarra' ? this.speed : this.speed * 1.1, m = 0;
+    for (let t = 0; t < ZONE_SECONDS[id]; t += 0.5) {
+      m += v * 0.5;
+      if (id === 'yarra') v = Math.max(MIN_SPEED, v - COIN_DRAG * 0.5);
+    }
     return m;
   }
 
@@ -163,13 +182,15 @@ export class Run {
     const roll = this.rand();
     this.slices++;
     if (this.slices <= 1) return this.slicePark(z, true);
-    if (d > 250 && roll < 0.28) return this.sliceOncoming(z);
-    if (roll < 0.62) return this.slicePark(z, false);
+    if (d > 250 && roll < 0.24) return this.sliceOncoming(z);
+    if (d > 150 && roll < 0.40) return this.sliceCoinTram(z);
+    if (roll < 0.66) return this.slicePark(z, false);
     return this.sliceBarriers(z);
   }
 
-  coinLine(x, z0, z1, y = 0.45, step = 2.4) {
-    for (let z = z0; z < z1; z += step) this.coinList.push({ x, y, z });
+  /** A line of coins; about one line in six on the ground is blue. */
+  coinLine(x, z0, z1, y = 0.45, step = 2.4, blue = y < 1 && this.rand() < 0.16) {
+    for (let z = z0; z < z1; z += step) this.coinList.push({ x, y, z, blue });
   }
 
   coinArc(x, zc, top, y0 = 0.45) {
@@ -183,7 +204,7 @@ export class Run {
     const [kind, livery] = kindPair;
     const K = CLASSES[kind];
     // H is the roof surface you run on (the roof plane sits just below the body top)
-    const t = { kind, livery, x: LANES[laneIdx], z, L: K.L, H: K.H - 0.12, vz: 0, go: vz, moving: false };
+    const t = { kind, livery, x: LANES[laneIdx], z, L: K.L, H: K.H - 0.12, vz: 0, go: vz, moving: false, wakeZ: Infinity };
     this.trams.push(t);
     return t;
   }
@@ -276,6 +297,50 @@ export class Run {
     this.genZ = end;
   }
 
+  /**
+   * A tram (a ferry on the river) with a roof full of coins pulls away from you
+   * as you get close, at a fraction of your speed. Get on it by running up a
+   * ramp in its lane as it sets off, or by bouncing off a trampoline behind it.
+   */
+  sliceCoinTram(z) {
+    const ln = Math.floor(this.rand() * 3);
+    const x = LANES[ln];
+    const viaRamp = this.rand() < 0.5;
+    const blue = this.rand() < 0.4;
+    // long trams for the trampoline, so you land on the roof whatever your speed
+    const kind = this.onRiver ? this.pick(FERRIES) : viaRamp ? this.kind() : this.pick([['E', 'E'], ['G', 'G']]);
+    let t;
+    if (viaRamp) {
+      const rampLen = 9;
+      t = this.addTram(ln, z + rampLen, kind);
+      this.ramps.push({ x, z, len: rampLen, h: t.H, tram: t, gangplank: this.onRiver });
+      for (let cz = z + 1; cz < z + rampLen; cz += 2) this.coinList.push({ x, y: ((cz - z) / rampLen) * t.H + 0.45, z: cz, blue });
+      // it sets off just as you reach the top, so you step straight on
+      t.wakeZ = z + rampLen - 1.5;
+    } else {
+      this.trampolines.push({ x, z });
+      this.coinLine(x, z - 8, z - 1);
+      t = this.addTram(ln, z + 4, kind);
+      t.wakeZ = z - 1;
+    }
+    t.follow = FOLLOW;
+    this.coinLine(x, t.z + 1, t.z + t.L, t.H + 0.3, 1.6, blue);
+    // it travels about this far before you've run off its front; keep its lane clear
+    const travel = ((t.z - z + t.L) * FOLLOW) / (1 - FOLLOW) + 6;
+    const end = t.z + t.L + travel;
+    for (const o of [0, 1, 2].filter((l) => l !== ln)) {
+      const r = this.rand();
+      if (r < 0.35) this.coinLine(LANES[o], z + 2, z + 26);
+      else if (r < 0.7) {
+        const bz = z + 6 + this.rand() * 16;
+        const high = !this.onRiver && this.rand() < 0.4;
+        this.barrier(o, bz, high);
+        if (!high) this.coinArc(LANES[o], bz, 1.2);
+      }
+    }
+    this.genZ = end;
+  }
+
   // ---------------------------------------------------------------------------
   // simulation
 
@@ -313,6 +378,16 @@ export class Run {
     this.emit('crash', why);
   }
 
+  /** Pick up a coin: points, and a little more speed. */
+  takeCoin(c) {
+    c.taken = true;
+    this.coins++;
+    this.score += (c.blue ? 20 : 10) * this.mult;
+    this.speed = Math.min(MAX_SPEED, this.speed + (c.blue ? 2 : 1) * COIN_BOOST);
+    this.sinceCoin = 0;
+    this.emit(c.blue ? 'coin-blue' : 'coin');
+  }
+
   update(dt) {
     this.time += dt;
     if (this.over) {
@@ -325,7 +400,8 @@ export class Run {
       return;
     }
     const p = this.p;
-    this.speed = 13 + 15 * (1 - Math.exp(-this.time / 160));
+    this.sinceCoin += dt;
+    if (this.sinceCoin > COIN_GRACE) this.speed = Math.max(MIN_SPEED, this.speed - COIN_DRAG * dt);
     if (this.slowT > 0) this.slowT = Math.max(0, this.slowT - dt);
     const v = this.speed * (1 - SLOW_BY * (this.slowT / SLOW_TIME));
     const prevZ = p.z;
@@ -334,13 +410,20 @@ export class Run {
     this.mult = Math.min(9, 1 + Math.floor(this.dist / 500));
     this.score += v * dt * this.mult;
 
-    // trams wake up and roll towards you
+    // trams wake up and roll towards you, or coin trams pull away from you
     for (const t of this.trams) {
       if (!t.moving && t.go && t.z - p.z < 75) {
         t.moving = true;
         t.vz = t.go;
         this.emit(t.kind === 'F' ? 'horn' : 'bell', t);
       }
+      if (!t.moving && p.z >= t.wakeZ) {
+        t.moving = true;
+        t.vz = t.follow * this.speed;
+        this.emit(t.kind === 'F' ? 'horn' : 'bell', t);
+      }
+      // once you've run off its front it pulls in and stops
+      if (t.moving && t.vz > 0 && t.z + t.L < p.z - 12) t.vz = 0;
       if (t.moving) t.z += t.vz * dt;
     }
 
@@ -356,6 +439,18 @@ export class Run {
     p.vy -= G * dt;
     p.y += p.vy * dt;
     const sup = this.supportAt(p.x, p.z, p.y);
+    // trampolines: land on one (or run onto it) and it throws you up
+    if (p.y <= sup + 0.05 && sup === 0 && p.vy <= 0)
+      for (const tr of this.trampolines)
+        if (Math.abs(p.x - tr.x) < 1.0 && Math.abs(p.z - tr.z) < 0.9) {
+          p.y = 0.3;
+          p.vy = BOUNCE_V;
+          p.grounded = false;
+          p.roll = 0;
+          tr.boing = 1;
+          this.emit('boing');
+          break;
+        }
     if (p.y <= sup) {
       if (!p.grounded && p.vy < -6) this.emit('land');
       p.y = sup;
@@ -401,12 +496,7 @@ export class Run {
     // coins
     for (const c of this.coinList) {
       if (c.taken) continue;
-      if (Math.abs(c.z - p.z) < 0.9 && Math.abs(c.x - p.x) < 0.9 && Math.abs(c.y + 0.27 - (p.y + 0.7)) < 1.1) {
-        c.taken = true;
-        this.coins++;
-        this.score += 10 * this.mult;
-        this.emit('coin');
-      }
+      if (Math.abs(c.z - p.z) < 0.9 && Math.abs(c.x - p.x) < 0.9 && Math.abs(c.y + 0.27 - (p.y + 0.7)) < 1.1) this.takeCoin(c);
     }
 
     // the dingo keeps coming
@@ -418,13 +508,16 @@ export class Run {
       dg.gap += (want - dg.gap) * Math.min(1, dt * 2);
     } else dg.gap = Math.min(DINGO_FAR, dg.gap + dt * 1.1);
     dg.x += (p.x - dg.x) * Math.min(1, dt * 6);
-    dg.y += (p.y - dg.y) * Math.min(1, dt * 5);
+    // he follows you up onto roofs, but doesn't go flying off trampolines after you
+    dg.y += (Math.min(p.y, p.support + 0.6) - dg.y) * Math.min(1, dt * 5);
 
     // tidy up behind, build ahead
     const behind = p.z - 20;
     this.trams = this.trams.filter((t) => t.z + t.L > behind - 40);
     this.ramps = this.ramps.filter((r) => r.z + r.len > behind);
     this.barriers = this.barriers.filter((b) => b.z > behind);
+    this.trampolines = this.trampolines.filter((tr) => tr.z > behind);
+    for (const tr of this.trampolines) if (tr.boing) tr.boing = Math.max(0, tr.boing - dt * 3);
     this.coinList = this.coinList.filter((c) => c.z > behind && !c.taken);
     while (this.zones.length > 1 && this.zones[1].z0 < behind - 60) this.zones.shift();
     this.generate();

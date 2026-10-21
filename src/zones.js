@@ -301,8 +301,9 @@ export const ZONES = {
 
 export const SCHEDULE = ['bourke', 'stkilda', 'collins', 'yarra'];
 // how long each stretch lasts: about 80 s on the streets. The river is planned at
-// 20 s so that, with the last layout running over, it always stays under 30 s.
-export const ZONE_SECONDS = { swanston: 80, bourke: 80, stkilda: 80, collins: 80, yarra: 20 };
+// 18 s at the slowest you could be going (see Run.planLength) so that, with a
+// stumble and the last layout running over, it always stays under 30 s.
+export const ZONE_SECONDS = { swanston: 80, bourke: 80, stkilda: 80, collins: 80, yarra: 18 };
 
 /**
  * Landmarks always sit at the far end of the view, where a screen pixel covers

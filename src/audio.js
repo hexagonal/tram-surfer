@@ -119,6 +119,15 @@ export class Sound {
         this._tone('square', 988, 988, t, 0.06, 0.12);
         this._tone('square', 1319, 1319, t + 0.06, 0.16, 0.12);
         break;
+      case 'coin-blue':
+        this._tone('square', 1319, 1319, t, 0.05, 0.12);
+        this._tone('square', 1760, 1760, t + 0.05, 0.05, 0.12);
+        this._tone('square', 2637, 2637, t + 0.1, 0.16, 0.1);
+        break;
+      case 'boing':
+        this._tone('sine', 180, 720, t, 0.3, 0.4);
+        this._tone('triangle', 90, 360, t, 0.25, 0.2);
+        break;
       case 'jump':
         this._tone('triangle', 260, 640, t, 0.16, 0.35);
         this._noise(t, 0.15, 'bandpass', 900, 2400, 0.12, 2);

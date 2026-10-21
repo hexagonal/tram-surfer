@@ -3,11 +3,11 @@
 
 import { W, H, S as PX, LW, LH, Frame, mix } from './gfx.js';
 import { Scene, TAG } from './render.js';
-import { Street, drawBarrier, drawRamp, drawCoin } from './street.js';
+import { Street, drawBarrier, drawRamp, drawCoin, drawTrampoline } from './street.js';
 import { drawTram } from './trams.js';
 import { RUNNER } from './sprites.js';
 import { dingoBackSprite } from './characters.js';
-import { Run } from './game.js';
+import { Run, MIN_SPEED, MAX_SPEED } from './game.js';
 import { Sound } from './audio.js';
 import * as S from './screens.js';
 import { ZONES, skyFor, clock } from './zones.js';
@@ -233,6 +233,7 @@ function drawWorld(dt) {
   for (const c of run.coinList) if (c.z > p.z - 1 && c.z < p.z + 120) drawCoin(scene, c, t);
   for (const b of run.barriers) if (b.z > p.z - 1) drawBarrier(scene, b, t, !!ZONES[run.zoneAt(b.z)].night);
   for (const r of run.ramps) if (r.z + r.len > scene.cz) drawRamp(scene, r);
+  for (const tr of run.trampolines) if (tr.z + 1 > scene.cz) drawTrampoline(scene, tr);
   const trams = run.trams.filter((tr) => tr.z + tr.L > scene.cz && tr.z < scene.cz + 240).sort((a, b) => a.z - b.z);
   for (const tr of trams) drawTram(scene, tr, !!ZONES[run.zoneAt(tr.z)].night);
   street.draw(scene);
@@ -280,7 +281,8 @@ function loop(now) {
         run.update(h);
         left -= h;
       }
-      sound.tempo(1 + (run.speed - 13) / 60);
+      // the music speeds up and slows down with the kid
+      sound.tempo(0.92 + (0.5 * (run.speed - MIN_SPEED)) / (MAX_SPEED - MIN_SPEED));
       if (run.over && run.overT > 0.9) { endRun(); setState('over'); }
     } else if (state === 'over') run.update(dt);
     drawWorld(state === 'paused' ? 0 : dt);
