@@ -33,7 +33,7 @@ Melbourne, which change over seamlessly mid-run.
     trams, floating crates replace the barriers, and footbridges are there to
     roll under. Ride a gangplank up onto a ferry roof
   - Street levels last about 80 seconds; the Yarra about 20–25 seconds
-  (never more than 30)
+    (never more than 30)
 - Intro animation (SURFER, DINGO, chomp chomp), start screen with the story,
   pause menu and game over screen
 - Procedural lofi music (`music/lofi.js`), new music each run, muffled when
