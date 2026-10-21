@@ -15,6 +15,17 @@ cel outlines, palette quantisation), then upscaled with nearest-neighbour.
 | `images/g-stkilda-direction.png` | Chosen direction on tree-lined St Kilda Rd | 320×180 | 64 colours, no dither |
 | `images/e-roster.png` | W class, City Circle W, Z class, E class, G class, runner | 400×160 | 56 colours |
 
+Character art comes from `characters.py`:
+
+| File | What |
+| --- | --- |
+| `images/h-dingo-designs.png` | Four takes on the wild dingo chaser (no collar): Red, Pup (chosen), Scar, Yokai |
+| `images/i-start-screen.png` | Start screen with the story text |
+| `images/j-intro.gif` | Intro animation: SURFER, the dingo chomps (DINGO), the kid bolts |
+| `images/j-intro-storyboard.png` | Six key frames of the intro |
+
+Japanese text is decorative; English is always the primary text.
+
 Each image also has a `-native.png` copy at its real resolution.
 
 Japanese text uses the Unifont JP and WenQuanYi Zen Hei Sharp pixel fonts (Debian packages `fonts-unifont` and `fonts-wqy-zenhei`); without them the signs are skipped.
@@ -24,4 +35,5 @@ Regenerate with:
 ```sh
 pip install numpy pillow
 python3 concept/render.py
+python3 concept/characters.py
 ```
