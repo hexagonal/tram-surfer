@@ -50,7 +50,8 @@ class Pen {
   dot(x, y, col) {
     const [X, Y] = this.P(x, y);
     this.ctx.fillStyle = col;
-    this.ctx.fillRect(Math.round(X), Math.round(Y), 1, 1);
+    const d = Math.max(1, Math.round(this.k / 2));
+    this.ctx.fillRect(Math.round(X), Math.round(Y), d, d);
   }
 }
 
@@ -127,11 +128,11 @@ function drawDingo(p, pose, mouth, legPhase) {
   p.group(null);
 }
 
-export function dingoSprite(k = 1, { pose = 'run', mouth = null, flip = false, phase = 0 } = {}) {
+export function dingoSprite(k = 1, { pose = 'run', mouth = null, flip = false, phase = 0, thick = 1 } = {}) {
   const w = Math.floor(110 * k) + 2, h = Math.floor(80 * k) + 2;
   return spriteFromCanvas(w, h, DINGO_COLS, (ctx) => {
     drawDingo(new Pen(ctx, k, Math.floor(6 * k) + 1, Math.floor(12 * k) + 1, flip), pose, mouth, phase);
-  }, V.line);
+  }, V.line, thick);
 }
 
 // --- the kid ------------------------------------------------------------------
@@ -209,18 +210,18 @@ function drawKid(p, pose) {
   }
 }
 
-export function kidSprite(k = 1, pose = 'run', flip = false) {
+export function kidSprite(k = 1, pose = 'run', flip = false, thick = 1) {
   return spriteFromCanvas(Math.floor(42 * k) + 2, Math.floor(52 * k) + 2, KID_COLS, (ctx) => {
     drawKid(new Pen(ctx, k, 1, Math.floor(4 * k) + 1, flip, 40), pose);
-  }, '#1a1020');
+  }, '#1a1020', thick);
 }
 
 // --- Pup from behind, for the chase in the 3D view --------------------------------
 
-export function dingoBackSprite(phase) {
+export function dingoBackSprite(phase, k = 1) {
   const s = Math.sin(phase * Math.PI * 2), c = Math.cos(phase * Math.PI * 2);
-  return spriteFromCanvas(36, 36, DINGO_COLS, (ctx) => {
-    const p = new Pen(ctx, 1, 2, 3 - Math.abs(s) * 1.5, false, 32);
+  return spriteFromCanvas(36 * k, 36 * k, DINGO_COLS, (ctx) => {
+    const p = new Pen(ctx, k, 2 * k, (3 - Math.abs(s) * 1.5) * k, false, 32);
     // hind legs, pumping
     p.ell(7, 22 + s * 2.5, 13, 30 + s * 2.5, V.shade);
     p.ell(19, 22 - s * 2.5, 25, 30 - s * 2.5, V.shade);
@@ -241,5 +242,5 @@ export function dingoBackSprite(phase) {
     // bushy tail streaming back towards us, wagging
     p.ell(11 + c * 3, 18, 21 + c * 3, 27, V.coat);
     p.ell(13 + c * 3, 20, 19 + c * 3, 25, V.cream);
-  }, V.line);
+  }, V.line, k);
 }

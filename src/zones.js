@@ -5,7 +5,7 @@
 // A zone sets the sky, fog and lighting, the ground, the shopfronts, the
 // street furniture and the landmark that closes the view.
 
-import { W, H, hex, mix, scale, hsh } from './gfx.js';
+import { W, H, S, hex, mix, scale, hsh } from './gfx.js';
 import { EMIS, Scene } from './render.js';
 
 const c = hex;
@@ -19,26 +19,25 @@ export const clock = { t: 0 };
 // --- ground --------------------------------------------------------------------------------
 
 const PAVE = c('#c4bcae'), TRACK = c('#8a8680'), RAIL = c('#d4d6de');
+// shades of a colour for noise n in 0..1, looked up instead of scaled per pixel
+const shades = (col, k0, dk) => Int32Array.from({ length: 33 }, (_, i) => scale(col, k0 + dk * (i / 32)));
+const TRACK_N = shades(TRACK, 0.95, 0.08), PAVE_N = shades(PAVE, 0.92, 0.12), PAVE_JOINT = shades(PAVE, 0.92 * 0.88, 0.12 * 0.88);
 
 function track(x, z, t, nz) {
+  const lane = Math.round(x / 3);
+  if (lane < -1 || lane > 1) return -1;
+  const dl = x - lane * 3;
+  if (Math.abs(dl) >= 0.95) return -1;
   const rw = Math.max(0.06, (t * 0.7) / 260);
-  for (const L of LANES) {
-    const dl = x - L;
-    if (Math.abs(dl) < 0.95) {
-      if (Math.abs(dl - 0.7175) < rw || Math.abs(dl + 0.7175) < rw) return RAIL;
-      return scale(TRACK, 0.95 + 0.08 * nz);
-    }
-  }
-  return -1;
+  if (Math.abs(dl - 0.7175) < rw || Math.abs(dl + 0.7175) < rw) return RAIL;
+  return TRACK_N[(nz * 32) | 0];
 }
 
 function paved(x, z, t) {
   const nz = hsh(Math.floor(x * 6), Math.floor(z * 6));
   const tr = track(x, z, t, nz);
   if (tr >= 0) return tr;
-  let col = scale(PAVE, 0.92 + 0.12 * nz);
-  if (t < 60 && (fm(x, 1.2) < 0.06 || fm(z, 0.6) < 0.05)) col = scale(col, 0.88);
-  return col;
+  return (t < 60 && (fm(x, 1.2) < 0.06 || fm(z, 0.6) < 0.05) ? PAVE_JOINT : PAVE_N)[(nz * 32) | 0];
 }
 
 const GOLD = [c('#e8c050'), c('#d2a02a'), c('#e8c050')], GROUT = c('#c88a10');
@@ -209,7 +208,8 @@ function skyline(night, eureka) {
 
 // --- skies --------------------------------------------------------------------------------------------
 
-export const SKY_HOR = 58, SKY_PAD = 24;
+// in screen pixels; cloud and moon positions in the zone specs are on the 320x180 layout grid
+export const SKY_HOR = 58 * S, SKY_PAD = 24 * S;
 
 function buildSky({ stops, clouds = [], seed = 1, stars = false, moon = null, cloudCols = ['#ffffff', '#b8ccf0'] }) {
   const h = H + SKY_PAD;
@@ -224,9 +224,9 @@ function buildSky({ stops, clouds = [], seed = 1, stars = false, moon = null, cl
   }
   if (stars)
     for (let y = 0; y < SKY_PAD + SKY_HOR * 0.7; y++)
-      for (let x = 0; x < W; x++) if (hsh(x, y, 7) > 0.994) img[y * W + x] = c('#e0e8ff');
+      for (let x = 0; x < W; x++) if (hsh(x, y, 7) > 0.9985) img[y * W + x] = c('#e0e8ff');
   if (moon) {
-    const [mx, my, r] = moon;
+    const [mx, my, r] = moon.map((v) => v * S);
     for (let y = my - r; y <= my + r; y++)
       for (let x = mx - r; x <= mx + r; x++) {
         const d = Math.hypot(x - mx, y - my);
@@ -236,7 +236,8 @@ function buildSky({ stops, clouds = [], seed = 1, stars = false, moon = null, cl
   let s = seed;
   const r = (a, b) => { s = (s * 16807) % 2147483647; return a + ((s - 1) / 2147483646) * (b - a); };
   for (let i = 0; i < 4; i++) r(0, 1);
-  for (const [cx, cy, sc] of clouds) {
+  for (const [cx0, cy0, sc0] of clouds) {
+    const cx = cx0 * S, cy = cy0 * S, sc = sc0 * S;
     const blobs = [[cx, cy, 14 * sc]];
     for (let i = 0; i < 9; i++) blobs.push([cx + r(-30, 30) * sc, cy + r(-10, 4) * sc, r(7, 15) * sc]);
     const bottom = Math.max(...blobs.map(([, by, rr]) => by + rr * 0.35));
@@ -303,8 +304,26 @@ export const SCHEDULE = ['bourke', 'stkilda', 'collins', 'yarra'];
 // 20 s so that, with the last layout running over, it always stays under 30 s.
 export const ZONE_SECONDS = { swanston: 80, bourke: 80, stkilda: 80, collins: 80, yarra: 20 };
 
+/**
+ * Landmarks always sit at the far end of the view, where a screen pixel covers
+ * about half a metre, so they are sampled on a 0.25 m grid, each cell worked
+ * out the first time it is seen.
+ */
+function baked(fn, hw, h, res = 0.25) {
+  const nx = Math.ceil((2 * hw) / res), ny = Math.ceil(h / res);
+  const grid = new Int32Array(nx * ny).fill(-2);
+  return (x, y) => {
+    const ix = Math.floor((x + hw) / res), iy = Math.floor(y / res);
+    if (ix < 0 || iy < 0 || ix >= nx || iy >= ny) return -1;
+    const i = iy * nx + ix;
+    if (grid[i] === -2) grid[i] = fn((ix + 0.5) * res - hw, (iy + 0.5) * res);
+    return grid[i];
+  };
+}
+
 for (const [id, z] of Object.entries(ZONES)) {
   z.id = id;
+  z.landmark = baked(z.landmark, z.landmarkW, z.landmarkH);
   z.skyImg = buildSky(z.sky);
   z.fogc = c(z.fog);
   z.fogk = Scene.fogTable(z.fogd);

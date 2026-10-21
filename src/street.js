@@ -5,7 +5,7 @@
 
 import { hex, scale, hsh, jpSign, noren } from './gfx.js';
 import { TAG, EMIS } from './render.js';
-import { LANTERN, treeSprite, COIN, SAKURA } from './sprites.js';
+import { LANTERN, treeSprite, COIN_HI, SAKURA } from './sprites.js';
 import { ZONES, STYLES, SIGNS, facade } from './zones.js';
 
 export { LANES } from './zones.js';
@@ -240,5 +240,5 @@ export function drawRamp(s, r) {
 
 export function drawCoin(s, coin, time) {
   const spin = Math.abs(Math.cos(time * 5 + coin.z * 0.7));
-  s.sprite(COIN, coin.x, coin.y, coin.z, 0.55 * Math.max(0.25, spin), TAG.OBJ, { glow: true, h: 0.55, emis: true });
+  s.sprite(COIN_HI, coin.x, coin.y, coin.z, 0.55 * Math.max(0.25, spin), TAG.OBJ, { glow: true, h: 0.55, emis: true });
 }

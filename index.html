@@ -23,18 +23,18 @@
 </style>
 </head>
 <body>
-<canvas id="screen" width="320" height="180" aria-label="Tram Surfer game"></canvas>
+<canvas id="screen" width="640" height="360" aria-label="Tram Surfer game"></canvas>
 <noscript>Tram Surfer needs JavaScript.</noscript>
 <script>
-  // scale the 320x180 screen to fit, in whole pixels when there's room
+  // scale the 640x360 screen to fit, in whole device pixels when there's room
   (function () {
     const cv = document.getElementById('screen');
     function fit() {
       const w = innerWidth, h = innerHeight;
-      let s = Math.min(w / 320, h / 180);
-      if (s >= 2) s = Math.floor(s * devicePixelRatio) / devicePixelRatio;
-      cv.style.width = Math.round(320 * s) + 'px';
-      cv.style.height = Math.round(180 * s) + 'px';
+      let s = Math.min(w / 640, h / 360);
+      if (s * devicePixelRatio >= 1) s = Math.floor(s * devicePixelRatio) / devicePixelRatio;
+      cv.style.width = Math.round(640 * s) + 'px';
+      cv.style.height = Math.round(360 * s) + 'px';
     }
     addEventListener('resize', fit);
     fit();

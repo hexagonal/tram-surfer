@@ -1,17 +1,29 @@
 // Framebuffer, palette, pixel font, sprites and text.
 //
-// Everything draws into one 320x180 buffer of 0xRRGGBB ints. At the end of a
+// Everything draws into one 640x360 buffer of 0xRRGGBB ints. At the end of a
 // frame it is snapped to the 64-colour palette (no dither) and shown on a
 // canvas that the page scales up with nearest-neighbour.
+//
+// The 3D view renders at the full 640x360. Screens and the HUD are laid out
+// on a 320x180 grid (LW x LH) and drawn in 2x2 blocks, so the pixel font and
+// the menus keep their chunky look; Frame's drawing calls take those
+// coordinates, and blitHi() places a full-resolution sprite on that grid.
 
 import { PALETTE } from './palette.js';
 import { JP } from './jptext.js';
 
-export const W = 320;
-export const H = 180;
+/** Screen pixels per layout pixel. */
+export const S = 2;
+export const LW = 320, LH = 180;
+export const W = LW * S;
+export const H = LH * S;
 
+// textures look colours up by name for every pixel, so parsed names are cached
+const HEX = new Map();
 export function hex(s) {
-  return parseInt(s.slice(1), 16);
+  let v = HEX.get(s);
+  if (v === undefined) HEX.set(s, (v = parseInt(s.slice(1), 16)));
+  return v;
 }
 
 export function mix(a, b, k) {
@@ -88,37 +100,43 @@ export class Frame {
   fill(c) {
     this.img.fill(c);
   }
+  // rectangles below are in layout pixels; _box turns them into screen pixels
+  _box(x0, y0, w, h, fn) {
+    const X0 = Math.max(0, Math.round(x0 * S)), Y0 = Math.max(0, Math.round(y0 * S));
+    const X1 = Math.min(W, Math.round((x0 + w) * S)), Y1 = Math.min(H, Math.round((y0 + h) * S));
+    for (let y = Y0; y < Y1; y++) for (let i = y * W + X0, e = y * W + X1; i < e; i++) fn(i);
+  }
   rect(x0, y0, w, h, c) {
-    const x1 = Math.min(W, x0 + w), y1 = Math.min(H, y0 + h);
-    for (let y = Math.max(0, y0); y < y1; y++)
-      for (let x = Math.max(0, x0); x < x1; x++) this.img[y * W + x] = c;
+    this._box(x0, y0, w, h, (i) => { this.img[i] = c; });
   }
   /** Darken/tint a rectangle towards c by alpha. */
   panel(x0, y0, w, h, c, a) {
-    const x1 = Math.min(W, x0 + w), y1 = Math.min(H, y0 + h);
-    for (let y = Math.max(0, y0); y < y1; y++)
-      for (let x = Math.max(0, x0); x < x1; x++) {
-        const i = y * W + x;
-        this.img[i] = mix(this.img[i], c, a);
-      }
+    this._box(x0, y0, w, h, (i) => { this.img[i] = mix(this.img[i], c, a); });
   }
   /** Darken a rectangle using only palette colours. */
   dim(x0, y0, w, h, times = 1) {
-    const x1 = Math.min(W, x0 + w), y1 = Math.min(H, y0 + h);
-    for (let y = Math.max(0, y0); y < y1; y++)
-      for (let x = Math.max(0, x0); x < x1; x++) {
-        const i = y * W + x;
-        let c = this.img[i];
-        for (let k = 0; k < times; k++) c = DIM[IDX[idx15(c)]];
-        this.img[i] = c;
-      }
+    this._box(x0, y0, w, h, (i) => {
+      let c = this.img[i];
+      for (let k = 0; k < times; k++) c = DIM[IDX[idx15(c)]];
+      this.img[i] = c;
+    });
   }
+  /** One layout pixel (a 2x2 block). */
   px(x, y, c) {
-    if (x >= 0 && y >= 0 && x < W && y < H) this.img[(y | 0) * W + (x | 0)] = c;
-  }
-  /** Blit a sprite; s = integer scale; flip mirrors horizontally. */
-  blit(spr, x, y, s = 1, flip = false) {
     x |= 0; y |= 0;
+    if (x < 0 || y < 0 || x >= LW || y >= LH) return;
+    const i = y * S * W + x * S;
+    this.img[i] = this.img[i + 1] = this.img[i + W] = this.img[i + W + 1] = c;
+  }
+  /** Blit a sprite at layout position (x, y), each sprite pixel s layout pixels; flip mirrors. */
+  blit(spr, x, y, s = 1, flip = false) {
+    this._blit(spr, Math.round(x * S), Math.round(y * S), s * S, flip);
+  }
+  /** Blit a full-resolution sprite (one screen pixel per sprite pixel) at layout position (x, y). */
+  blitHi(spr, x, y, flip = false) {
+    this._blit(spr, Math.round(x * S), Math.round(y * S), 1, flip);
+  }
+  _blit(spr, x, y, s, flip) {
     const { w, h, data } = spr;
     for (let j = 0; j < h * s; j++) {
       const yy = y + j;
@@ -149,6 +167,25 @@ export function spriteFromArt(art, pal) {
   return { w, h, data };
 }
 
+/** Scale2x (EPX): doubles a pixel-art sprite, rounding off its diagonal steps. */
+export function scale2x(spr) {
+  const { w, h, data } = spr;
+  const W2 = w * 2, out = new Int32Array(W2 * h * 2);
+  const at = (x, y) => data[Math.min(h - 1, Math.max(0, y)) * w + Math.min(w - 1, Math.max(0, x))];
+  for (let y = 0; y < h; y++)
+    for (let x = 0; x < w; x++) {
+      const P = at(x, y), A = at(x, y - 1), B = at(x + 1, y), C = at(x - 1, y), D = at(x, y + 1);
+      let p1 = P, p2 = P, p3 = P, p4 = P;
+      if (C === A && C !== D && A !== B) p1 = A;
+      if (A === B && A !== C && B !== D) p2 = B;
+      if (D === C && D !== B && C !== A) p3 = C;
+      if (B === D && B !== A && D !== C) p4 = D;
+      const i = y * 2 * W2 + x * 2;
+      out[i] = p1; out[i + 1] = p2; out[i + W2] = p3; out[i + W2 + 1] = p4;
+    }
+  return { w: W2, h: h * 2, data: out };
+}
+
 /** Mirror a sprite left-right. */
 export function flipSprite(s) {
   const data = new Int32Array(s.w * s.h);
@@ -161,7 +198,7 @@ export function flipSprite(s) {
  * every pixel is snapped to the nearest colour actually used in the drawing
  * (so anti-aliased edges vanish), and a one-pixel outline is added.
  */
-export function spriteFromCanvas(w, h, colours, draw, outline = '#140c1c') {
+export function spriteFromCanvas(w, h, colours, draw, outline = '#140c1c', thick = 1) {
   const cv = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(w, h) : Object.assign(document.createElement('canvas'), { width: w, height: h });
   const ctx = cv.getContext('2d');
   draw(ctx);
@@ -181,7 +218,10 @@ export function spriteFromCanvas(w, h, colours, draw, outline = '#140c1c') {
     data[i] = best;
   }
   const spr = { w, h, data };
-  return outline ? outlined(spr, outline) : spr;
+  if (!outline) return spr;
+  let o = spr;
+  for (let k = 0; k < thick; k++) o = outlined(o, outline);
+  return o;
 }
 
 export function outlined(spr, col = '#140c1c') {
