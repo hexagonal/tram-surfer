@@ -19,7 +19,7 @@ Character art comes from `characters.py`:
 
 | File | What |
 | --- | --- |
-| `images/h-dingo-designs.png` | Four takes on the wild dingo chaser (no collar): Red, Pup, Scar, Yokai |
+| `images/h-dingo-designs.png` | Four takes on the wild dingo chaser (no collar): Red, Pup (chosen), Scar, Yokai |
 | `images/i-start-screen.png` | Start screen with the story text |
 | `images/j-intro.gif` | Intro animation: SURFER, the dingo chomps (DINGO), the kid bolts |
 | `images/j-intro-storyboard.png` | Six key frames of the intro |

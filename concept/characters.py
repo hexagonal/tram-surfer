@@ -413,7 +413,7 @@ def start_screen():
         img[y, x:x + L] = img[y, x:x + L] * 0.4 + 255 * 0.6
     # the chase: kid on the Z roof, dingo leaping the gap
     paste(img, kid_sprite(1.0), 238, int(ground - 3.4 * ppm) - 52)
-    paste(img, dingo_sprite("red", 0.72), 132, int(ground - 3.2 * ppm) - 64)
+    paste(img, dingo_sprite("pup", 0.72), 132, int(ground - 3.2 * ppm) - 64)
     # title and story
     text(img, 10, 10, "TRAM SURFER", "#ffd23a", 3, "#1a1020")
     jp_text(img, 10, 30, "トラムサーファー", "#ffffff")
@@ -494,8 +494,8 @@ def intro():
     ground = 152
     kid = {p: kid_sprite(2.0, p) for p in ("stand", "run", "run2")}
     kid["scared"] = kid_sprite(2.0, "scared", flip=True)
-    dg = {m: dingo_sprite("red", 1.3, pose="stand", mouth=m) for m in ("shut", "open")}
-    drun = dingo_sprite("red", 1.3)
+    dg = {m: dingo_sprite("pup", 1.3, pose="stand", mouth=m) for m in ("shut", "open")}
+    drun = dingo_sprite("pup", 1.3)
     frames = []
 
     def frame(ms, kpose=None, kx=190, dpose=None, dx=0, words=(), streaks=False):
