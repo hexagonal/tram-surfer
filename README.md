@@ -22,10 +22,13 @@ Melbourne, which change over seamlessly mid-run.
   without one slows him back down (14 to 32 m/s). Blue coins are worth twice
   the points and twice the speed. The music speeds up and slows down with him
 - Coin trams, early in every level and every 400 m or so: a ramp leads up onto
-  a raised platform (a jetty on the Yarra), and a tram (a ferry) covered in
-  coins rolls along beside it at half your speed. Catch it up and step
-  sideways onto its roof. Elsewhere, trampolines bounce you onto long coin
-  trams pulling away from you
+  a raised platform (a jetty on the Yarra), and a tram covered in coins (two
+  ferries nose to tail on the river) comes down the next lane at you. Once its
+  front draws level, step sideways onto its roof and run along it. Elsewhere a
+  trampoline sits in the path of an oncoming coin tram: bounce as it arrives
+  and land on its roof. Stay down in a coin tram's lane and it runs you over
+- More trams (and ferries) come at you without coins on top: those are just
+  obstacles to get out of the way of, sometimes two lanes at once
 - Pup, the chibi dingo: bump the side of a tram and you stumble, which slows
   you down and brings him right up behind you, where he stays in view as a
   warning. Stumble again within 20 seconds and he chomps you; after 20 clean

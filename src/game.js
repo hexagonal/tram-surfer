@@ -25,8 +25,8 @@ const COIN_GRACE = 1.2;   // seconds without a coin before you start to slow
 const COIN_DRAG = 0.55;   // m/s lost per second after that
 
 const BOUNCE_V = 17;      // trampolines throw you ~4.8 m up, high enough for a tram roof
-const FOLLOW = 0.4;       // trampoline coin trams roll away from you at this fraction of your speed
-const ALONGSIDE = 0.5;    // platform coin trams roll along at this fraction of your speed
+const ONCOMING = 0.4;     // coin trams come at you at about this fraction of your speed (ferries a bit slower)
+const WAKE_AHEAD = 32;    // coin trams set off when you're this far from the ramp or trampoline
 const SHOW_EVERY = 420;   // metres between platform coin trams (and one early in every zone)
 
 const KINDS = [
@@ -193,8 +193,8 @@ export class Run {
       this.nextShow = this.genZ + SHOW_EVERY;
       return this.slicePlatform(z);
     }
-    if (d > 250 && roll < 0.24) return this.sliceOncoming(z);
-    if (d > 150 && roll < 0.34) return this.sliceTrampoline(z);
+    if (d > 100 && roll < 0.3) return this.sliceOncoming(z);
+    if (d > 150 && roll < 0.4) return this.sliceTrampoline(z);
     if (roll < 0.66) return this.slicePark(z, false);
     return this.sliceBarriers(z);
   }
@@ -215,7 +215,7 @@ export class Run {
     const [kind, livery] = kindPair;
     const K = CLASSES[kind];
     // H is the roof surface you run on (the roof plane sits just below the body top)
-    const t = { kind, livery, x: LANES[laneIdx], z, L: K.L, H: K.H - 0.12, vz: 0, go: vz, moving: false, wakeZ: Infinity };
+    const t = { kind, livery, x: LANES[laneIdx], z, L: K.L, H: K.H - 0.12, vz: 0, go: vz, moving: false, wakeZ: Infinity, meet: null };
     this.trams.push(t);
     return t;
   }
@@ -289,56 +289,91 @@ export class Run {
   }
 
   sliceOncoming(z) {
-    // a tram comes down the line at you; its lane is kept clear for it
-    const ln = Math.floor(this.rand() * 3);
+    // trams come down the line at you; their lanes are kept clear for them.
+    // Later on two lanes can have one, leaving a single way through
+    const lanes = [0, 1, 2].sort(() => this.rand() - 0.5);
+    const two = this.p.z > 500 && this.rand() < 0.4;
     const lead = 40;
-    const t = this.addTram(ln, z + lead, this.kind(), -9 - this.rand() * 4);
-    let end = t.z + t.L;
-    const others = [0, 1, 2].filter((l) => l !== ln);
-    const parkLane = this.rand() < 0.5 ? others[Math.floor(this.rand() * 2)] : -1;
+    let end = z;
+    for (let i = 0; i < (two ? 2 : 1); i++) {
+      const t = this.addTram(lanes[i], z + lead + i * (10 + this.rand() * 12), this.kind(), -9 - this.rand() * 4);
+      end = Math.max(end, t.z + t.L);
+    }
+    const others = lanes.slice(two ? 2 : 1);
+    const parkLane = !two && this.rand() < 0.5 ? others[Math.floor(this.rand() * 2)] : -1;
     for (const o of others) {
       if (o === parkLane) {
         const pt = this.addTram(o, z + 8 + this.rand() * 10, this.kind());
         end = Math.max(end, pt.z + pt.L);
       } else {
         this.coinLine(LANES[o], z + 2, z + lead);
-        if (this.rand() < 0.5) this.barrier(o, z + lead + 8, !this.onRiver && this.rand() < 0.5);
+        if (!two && this.rand() < 0.5) this.barrier(o, z + lead + 8, !this.onRiver && this.rand() < 0.5);
       }
     }
     this.genZ = end;
   }
 
   /**
-   * The coin tram: a ramp leads up onto a raised platform, and as you climb it
-   * a tram (a ferry by a jetty on the river) with its roof covered in coins
-   * sets off in the next lane at half your speed. You catch it up along the
-   * platform and step sideways onto its roof. Its start is placed so that it
-   * is just ahead of you when you reach the top, whatever your speed.
+   * A coin tram coming at you: a long tram (on the river two ferries nose to
+   * tail) with its roof covered in coins. It sets off as you pass wakeZ, at a
+   * speed chosen then so that its front reaches meetZ when you do (dt seconds
+   * later than you, for a trampoline). Coins all blue about half the time.
+   */
+  coinTram(ln, z, wakeZ, meetZ, dt = 0) {
+    const group = [];
+    const kind = this.onRiver ? this.pick(FERRIES) : this.pick([['E', 'E'], ['G', 'G']]);
+    let zz = z;
+    for (let i = 0; i < (this.onRiver ? 2 : 1); i++) {
+      const t = this.addTram(ln, zz, i ? this.pick(FERRIES) : kind);
+      group.push(t);
+      zz = t.z + t.L + 0.8;
+    }
+    const lead = group[0];
+    lead.wakeZ = wakeZ;
+    lead.meet = { z: meetZ, dt, group };
+    const blue = this.rand() < 0.5;
+    for (const t of group)
+      for (let dz = 0.8; dz < t.L - 0.4; dz += 1.2) this.coinList.push({ x: LANES[ln], y: t.H + 0.3, z: t.z + dz, blue, on: t, dz });
+    return { lead, end: zz, L: zz - z, H: lead.H };
+  }
+
+  /** Roughly how fast a coin tram comes at you, as a fraction of your speed. */
+  get oncoming() {
+    return this.onRiver ? ONCOMING * 0.75 : ONCOMING;
+  }
+
+  /**
+   * The coin tram: a ramp leads up onto a raised platform (a jetty on the
+   * river), and a tram covered in coins comes down the next lane at you. Its
+   * front draws level with you a little way along the platform, and then you
+   * step sideways onto its roof and run along it. Stay down in its lane and
+   * it runs you over.
    */
   slicePlatform(z) {
     const pl = Math.floor(this.rand() * 3);
     const tl = pl === 1 ? (this.rand() < 0.5 ? 0 : 2) : 1;
-    const kind = this.onRiver ? this.pick(FERRIES) : this.pick([['E', 'E'], ['G', 'G'], ['Z', 'Z'], ['W', 'W']]);
     const rampLen = 9, top = z + rampLen;
-    // it wakes as you reach the foot of the ramp and moves half as far as you
-    // while you climb, so its tail ends up 5 m ahead of you at the top
-    const t = this.addTram(tl, top + 5 - rampLen * ALONGSIDE, kind);
-    t.wakeZ = z;
-    t.follow = ALONGSIDE;
-    // long enough to catch it up and run its whole length beside it
-    const len = (5 + t.L) / (1 - ALONGSIDE) + 12;
+    const f = this.oncoming;
+    // you meet its front this far along the platform
+    const meetZ = top + 12;
+    const wakeZ = z - WAKE_AHEAD;
+    const ct = this.coinTram(tl, meetZ + f * (meetZ - wakeZ), wakeZ, meetZ);
+    // long enough to run the coin tram's whole length beside it
+    const len = meetZ - top + ct.L / (1 + f) + 14;
     const x = LANES[pl];
-    this.ramps.push({ x, z, len: rampLen, h: t.H, gangplank: this.onRiver });
-    this.platforms.push({ x, z0: top, z1: top + len, h: t.H, jetty: this.onRiver });
-    for (let cz = z + 1; cz < top + 10; cz += 2) this.coinList.push({ x, y: Math.min(t.H, ((cz - z) / rampLen) * t.H) + 0.45, z: cz });
-    // the roof is covered in coins, all blue about half the time
-    const blue = this.rand() < 0.5;
-    for (let dz = 0.8; dz < t.L - 0.4; dz += 1.2) this.coinList.push({ x: LANES[tl], y: t.H + 0.3, z: t.z + dz, blue, on: t, dz });
-    // the tram travels about this far before you run off its front; keep its lane clear
-    const travel = ((top - t.z + 5 + t.L) * ALONGSIDE) / (1 - ALONGSIDE) + 8;
-    const end = Math.max(top + len, t.z + t.L + travel) + 4;
-    // the third lane: a few coins and obstacles
+    this.ramps.push({ x, z, len: rampLen, h: ct.H, gangplank: this.onRiver });
+    this.platforms.push({ x, z0: top, z1: top + len, h: ct.H, jetty: this.onRiver });
+    // coins up the ramp and along the platform until it's time to step across
+    for (let cz = z + 1; cz < meetZ; cz += 2) this.coinList.push({ x, y: Math.min(ct.H, ((cz - z) / rampLen) * ct.H) + 0.45, z: cz });
+    const end = Math.max(top + len, ct.end) + 4;
+    // the third lane: coins, obstacles, or a plain tram coming at you too
     const o = [0, 1, 2].find((l) => l !== pl && l !== tl);
+    if (this.rand() < 0.4) {
+      const t = this.addTram(o, top + 30 + this.rand() * 20, this.kind(), -9 - this.rand() * 4);
+      this.coinLine(LANES[o], z, z + 16);
+      this.genZ = Math.max(end, t.z + t.L);
+      return;
+    }
     for (let bz = z + 10; bz < top + len - 10; bz += 22 + this.rand() * 10) {
       if (this.rand() < 0.5) this.coinLine(LANES[o], bz, bz + 10);
       else {
@@ -350,21 +385,20 @@ export class Run {
     this.genZ = end;
   }
 
-  /** A trampoline behind a long tram (a ferry on the river) that pulls away as you near it, roof full of coins. */
+  /**
+   * A trampoline with a coin tram coming at you in the same lane. Bounce as it
+   * arrives and you sail over its front and come down on its roof; miss the
+   * trampoline and you'd better get out of its way.
+   */
   sliceTrampoline(z) {
     const ln = Math.floor(this.rand() * 3);
     const x = LANES[ln];
-    const blue = this.rand() < 0.4;
-    const kind = this.onRiver ? this.pick(FERRIES) : this.pick([['E', 'E'], ['G', 'G']]);
+    const f = this.oncoming;
     this.trampolines.push({ x, z });
     this.coinLine(x, z - 8, z - 1);
-    const t = this.addTram(ln, z + 4, kind);
-    t.wakeZ = z - 1;
-    t.follow = FOLLOW;
-    for (let dz = 1; dz < t.L; dz += 1.6) this.coinList.push({ x, y: t.H + 0.3, z: t.z + dz, blue, on: t, dz });
-    // it travels about this far before you've run off its front; keep its lane clear
-    const travel = ((t.z - z + t.L) * FOLLOW) / (1 - FOLLOW) + 6;
-    const end = t.z + t.L + travel;
+    // its front reaches the trampoline's line about 0.45 s into your bounce
+    const v = this.speed, wakeZ = z - WAKE_AHEAD, dt = 0.45;
+    const ct = this.coinTram(ln, z + dt * (1 + f) * v + f * WAKE_AHEAD, wakeZ, z, dt);
     for (const o of [0, 1, 2].filter((l) => l !== ln)) {
       const r = this.rand();
       if (r < 0.35) this.coinLine(LANES[o], z + 2, z + 26);
@@ -375,7 +409,7 @@ export class Run {
         if (!high) this.coinArc(LANES[o], bz, 1.2);
       }
     }
-    this.genZ = end;
+    this.genZ = ct.end + 4;
   }
 
   // ---------------------------------------------------------------------------
@@ -451,22 +485,25 @@ export class Run {
     this.mult = Math.min(9, 1 + Math.floor(this.dist / 500));
     this.score += v * dt * this.mult;
 
-    // trams wake up and roll towards you, or coin trams pull away from you
+    // trams wake up and roll towards you
     for (const t of this.trams) {
       if (!t.moving && t.go && t.z - p.z < 75) {
         t.moving = true;
         t.vz = t.go;
         this.emit(t.kind === 'F' ? 'horn' : 'bell', t);
       }
-      if (!t.moving && p.z >= t.wakeZ) {
-        t.moving = true;
-        t.vz = t.follow * this.speed;
+      if (!t.moving && t.meet && p.z >= t.wakeZ) {
+        // coin trams time their run so their front meets you where it should
+        const m = t.meet, until = Math.max(0.3, (m.z - p.z) / v + m.dt);
+        const vz = -Math.max(3, Math.min(20, (t.z - m.z - m.dt * v) / until));
+        for (const g of m.group) {
+          g.moving = true;
+          g.vz = vz;
+        }
         this.emit(t.kind === 'F' ? 'horn' : 'bell', t);
       }
-      // once you've run off its front it pulls in and stops
-      if (t.moving && t.vz > 0 && t.z + t.L < p.z - 12) t.vz = 0;
-      if (t.moving) t.z += t.vz * dt;
     }
+    for (const t of this.trams) if (t.moving) t.z += t.vz * dt;
     // coins on a moving roof ride along with it
     for (const c of this.coinList) if (c.on) c.z = c.on.z + c.dz;
 
