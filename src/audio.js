@@ -149,6 +149,10 @@ export class Sound {
       case 'chomp':
         this._chomp(t);
         break;
+      case 'horn':
+        this._tone('sawtooth', 147, 147, t, 0.7, 0.16);
+        this._tone('sawtooth', 185, 185, t, 0.7, 0.12);
+        break;
       case 'bell':
         this._bell(t);
         this._bell(t + 0.22);

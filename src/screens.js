@@ -9,57 +9,10 @@ import { VOLUME_STEPS } from './audio.js';
 
 const c = hex;
 
-function lerpStops(stops, v) {
-  if (v <= stops[0][0]) return c(stops[0][1]);
-  for (let i = 1; i < stops.length; i++)
-    if (v <= stops[i][0]) {
-      const [p0, c0] = stops[i - 1], [p1, c1] = stops[i];
-      return mix(c(c0), c(c1), (v - p0) / (p1 - p0));
-    }
-  return c(stops[stops.length - 1][1]);
-}
-
 function rng(seed) {
   let s = seed;
   for (let i = 0; i < 4; i++) s = (s * 16807) % 2147483647;
   return (a, b) => { s = (s * 16807) % 2147483647; return a + ((s - 1) / 2147483646) * (b - a); };
-}
-
-// --- sky for the 3D view ------------------------------------------------------------
-// Rendered once for a horizon at row 58, with spare rows above so the camera can
-// tilt down (move the horizon up) when the kid is on the road.
-
-const SKY_HOR = 58, SKY_PAD = 24;
-const skyImg = (() => {
-  const h = H + SKY_PAD;
-  const img = new Int32Array(W * h);
-  const stops = [[0, '#2f7ee6'], [0.65, '#78c0f4'], [1, '#d8f0ff']];
-  for (let y = 0; y < h; y++) {
-    const v = (y - SKY_PAD) / SKY_HOR;
-    img.fill(lerpStops(stops, v), y * W, (y + 1) * W);
-  }
-  const r = rng(21);
-  for (const [cx, cy, sc] of [[70, 16, 0.9], [250, 24, 1.0]]) {
-    const blobs = [[cx, cy, 14 * sc]];
-    for (let i = 0; i < 9; i++) blobs.push([cx + r(-30, 30) * sc, cy + r(-10, 4) * sc, r(7, 15) * sc]);
-    const bottom = Math.max(...blobs.map(([, by, rr]) => by + rr * 0.35));
-    for (let y = 0; y < H; y++)
-      for (let x = 0; x < W; x++) {
-        if (y >= bottom) continue;
-        let inside = false, lit = false;
-        for (const [bx, by, rr] of blobs) {
-          if (Math.hypot(x - bx, (y - by) * 1.15) < rr) inside = true;
-          if (Math.hypot(x - bx + rr * 0.15, (y - by + rr * 0.35) * 1.15) < rr * 0.92) lit = true;
-        }
-        if (inside) img[(y + SKY_PAD) * W + x] = lit ? 0xffffff : c('#b8ccf0');
-      }
-  }
-  return img;
-})();
-
-export function skyFor(hor) {
-  const off = Math.max(0, Math.min(SKY_PAD, SKY_PAD + SKY_HOR - hor));
-  return skyImg.subarray(off * W, off * W + W * H);
 }
 
 // --- overlays -------------------------------------------------------------------------
@@ -154,7 +107,7 @@ function pips(fr, x, y, snd) {
 
 // --- HUD ----------------------------------------------------------------------------------
 
-export function hud(fr, btns, run, snd, volFlash) {
+export function hud(fr, btns, run, snd, volFlash, zone) {
   const score = String(Math.floor(run.score)).padStart(7, '0');
   text(fr, 4, 4, 'SCORE', '#ffffff');
   text(fr, 4, 12, score, '#ffd23a', 2);
@@ -166,9 +119,9 @@ export function hud(fr, btns, run, snd, volFlash) {
   const xr = W - 4 - textWidth(coins, 2);
   fr.blit(COIN, xr - 11, 7);
   text(fr, xr, 6, coins, '#ffffff', 2);
-  const sz = jpSize('swanston');
-  jpText(fr, ((W - sz.w) >> 1), 5, 'swanston', '#ffffff');
-  textC(fr, W / 2, H - 10, 'SWANSTON ST', '#f0f0f0');
+  const sz = jpSize(zone.jp);
+  jpText(fr, ((W - sz.w) >> 1), 5, zone.jp, '#ffffff');
+  textC(fr, W / 2, H - 10, zone.name, '#f0f0f0');
   // controls: pause and sound
   iconSound(fr, W - 33, 22, snd);
   btns.add(W - 33, 22, 13, 13, 'mute');
