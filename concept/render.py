@@ -523,20 +523,30 @@ LANES = (-3.0, 0.0, 3.0)
 XR, XV, XB = 6.3, 7.4, 10.0  # road edge, verandah edge, building line
 
 
-def road_tex(night, wet):
+def road_tex(night, wet, tram_only=False):
     def tex(x, z, t):
         n = len(x)
         base = C("#24262e") if night else C("#5a5a62")
+        if tram_only:
+            base = C("#c4bcae")
         rgb = np.tile(base, (n, 1))
         nz = hsh(np.floor(x * 6), np.floor(z * 6))
         rgb *= (0.92 + 0.12 * nz)[:, None]
+        if tram_only:
+            pave = ((x % 1.2) < 0.06) | ((z % 0.6) < 0.05)
+            rgb[pave & (t < 60)] *= 0.88
         rw = np.maximum(0.06, t * 0.7 / 260)
         for L in LANES:
             dl = x - L
-            rgb[np.abs(dl) < 0.72] *= 0.9
+            if tram_only:
+                rgb[np.abs(dl) < 0.95] = C("#8a8680") * (0.95 + 0.08 * nz[np.abs(dl) < 0.95])[:, None]
+            else:
+                rgb[np.abs(dl) < 0.72] *= 0.9
             for g in (-0.7175, 0.7175):
                 rail = np.abs(dl - g) < rw
                 rgb[rail] = C("#9a9ca8") if night else C("#d4d6de")
+        if tram_only:
+            return rgb, None, None
         for xl in (-1.5, 1.5):
             dash = (np.abs(x - xl) < np.maximum(0.08, t * 0.5 / 260)) & ((z % 6) < 3)
             rgb[dash] = C("#c8c8c0") if night else C("#f2f2ea")
@@ -649,10 +659,10 @@ def facade_tex(segs, night):
     return tex
 
 
-def add_street(s, zmax, seed=1, tall=1.0, verandah_top=("#c03030", "#f0e8d8")):
+def add_street(s, zmax, seed=1, tall=1.0, verandah_top=("#c03030", "#f0e8d8"), tram_only=False):
     night = s.night
     if not s.mirror:
-        s.hplane(0, -XR, XR, -50, zmax, road_tex(night, False), ROAD)
+        s.hplane(0, -XR, XR, -50, zmax, road_tex(night, False, tram_only), ROAD)
         for sg in (-1, 1):
             s.hplane(0.15, *sorted((sg * XR, sg * XB)), -50, zmax, foot_tex(night), FOOT)
     for sg in (-1, 1):
@@ -740,7 +750,11 @@ def add_stop_sign(s, x, z):
     s.zplane(z, x - 0.35, x + 0.35, 0.15, 2.9, tex, OBJ)
 
 
-def add_tree(s, x, z, h=8.0, seed=0):
+PLANE_TREE = ("#3f7a34", "#7cbc48", "#b4e070", "#285024")
+SAKURA = ("#e27ea0", "#ffbcd2", "#fff0f6", "#b8587a")
+
+
+def add_tree(s, x, z, h=8.0, seed=0, leaves=PLANE_TREE):
     rng = random.Random(seed)
     blobs = [(rng.uniform(-0.3, 0.3), rng.uniform(0.55, 0.85), rng.uniform(0.18, 0.3)) for _ in range(7)]
     blobs.append((0, 0.7, 0.32))
@@ -759,10 +773,10 @@ def add_tree(s, x, z, h=8.0, seed=0):
             d = np.hypot(u - bx, v - by)
             can |= d < r
             lit |= np.hypot(u - bx + r * 0.25, v - by - r * 0.3) < r * 0.75
-        rgb[can] = C("#3f7a34")
-        rgb[can & lit] = C("#7cbc48")
-        rgb[can & lit & (hsh(u * 40, v * 40) > 0.85)] = C("#b4e070")
-        rgb[can & ~lit & (hsh(u * 30, v * 30) > 0.8)] = C("#285024")
+        rgb[can] = C(leaves[0])
+        rgb[can & lit] = C(leaves[1])
+        rgb[can & lit & (hsh(u * 40, v * 40) > 0.85)] = C(leaves[2])
+        rgb[can & ~lit & (hsh(u * 30, v * 30) > 0.8)] = C(leaves[3])
         return rgb, trunk | br | can, None
     s.zplane(z, x - w / 2, x + w / 2, 0.15, h + 0.15, tex, OBJ)
 
@@ -801,6 +815,162 @@ def add_station(s, Z):
         rgb[tclk & (np.hypot(x + 26, y - 24) < 0.25)] = C("#202020")
         return rgb, al, None
     s.zplane(Z, -45, 45, 0, 40, tex, BUILD)
+
+
+LANTERN_ART = """
+..kk..
+.kRRk.
+krrrrk
+kkkkkk
+krrrrk
+krrrrk
+kkkkkk
+.kRRk.
+..kk..
+..yy..
+"""
+
+
+def add_library(s, Z):
+    """A State Library style frontage: portico, pediment and a big copper dome."""
+    def tex(x, y, t):
+        n = len(x)
+        rgb = fill(n, "#e6dcc8")
+        wing = (np.abs(x) < 40) & (y < 13)
+        port = (np.abs(x) < 11) & (y < 16)
+        ped = (np.abs(x) < 12) & (y >= 16) & (y < 16 + 5 * (1 - np.abs(x) / 12))
+        drum = (np.abs(x) < 13) & (y < 24)
+        dome = np.hypot(x / 1.0, (y - 24) * 1.25) < 13
+        lantern = (np.abs(x) < 2.2) & (y < 37) & (y > 30)
+        al = wing | port | ped | drum | dome | lantern
+        rgb[(y % 4.3) < 0.35] = C("#f6f0e2")
+        win = wing & ~port & (((x + 100) % 4) > 1.2) & (((x + 100) % 4) < 2.8) & ((y % 6.5) > 2) & ((y % 6.5) < 5)
+        rgb[win] = C("#4a5664")
+        col = port & (y < 14) & (((x + 11) % 2.75) < 0.8)
+        rgb[port & (y < 14) & ~col] = C("#9a9080")
+        rgb[col] = C("#f6f0e2")
+        rgb[port & (y >= 14)] = C("#f6f0e2")
+        rgb[ped] = C("#ece2cc")
+        rgb[ped & (np.abs(y - (16 + 5 * (1 - np.abs(x) / 12))) < 0.5)] = C("#c8bca4")
+        rgb[drum & ~port & ~ped & (y > 16)] = C("#d8ccb4")
+        dm = dome & ~drum
+        rgb[dm] = C("#6e9c90")
+        rgb[dm & (np.hypot(x + 4, y - 30) < 5)] = C("#a8d4c4")
+        rgb[dm & ((np.abs(x) % 3.2) < 0.35)] = C("#4e7a70")
+        rgb[lantern] = C("#e8e0cc")
+        return rgb, al, None
+    s.zplane(Z, -40, 40, 0, 40, tex, BUILD)
+    lawn = lambda a, b, t: (np.where(((b * 0.5).astype(int) % 2 == 0)[:, None], C("#7cbc48"), C("#6aac3c")), None, None)
+    s.hplane(0.16, -40, -XR - 4, Z - 25, Z, lawn, FOOT)
+    s.hplane(0.16, XR + 4, 40, Z - 25, Z, lawn, FOOT)
+
+
+JP_FONTS = {
+    16: ("/usr/share/fonts/opentype/unifont/unifont_jp.otf", 0),
+    12: ("/usr/share/fonts/truetype/wqy/wqy-zenhei.ttc", 1),  # Zen Hei Sharp bitmap strike
+}
+
+
+def jp_font(size):
+    from PIL import ImageFont
+    path, index = JP_FONTS[size]
+    try:
+        return ImageFont.truetype(path, size, index=index)
+    except OSError:
+        return None
+
+
+def jp_bitmap(text, size=16, vertical=False):
+    """1-bit pixel render of Japanese text (no anti-aliasing), as a bool array."""
+    font = jp_font(size)
+    if font is None:
+        return None
+    if vertical:
+        text = text.replace("ー", "｜")
+        im = Image.new("L", (size, size * len(text)), 0)
+        d = ImageDraw.Draw(im)
+        d.fontmode = "1"
+        for i, ch in enumerate(text):
+            d.text((0, i * size), ch, font=font, fill=255)
+    else:
+        im = Image.new("L", (size * len(text), size), 0)
+        d = ImageDraw.Draw(im)
+        d.fontmode = "1"
+        d.text((0, 0), text, font=font, fill=255)
+    return np.asarray(im) > 127
+
+
+def sign_sprite(text, bg, fg, vertical=True, pad=3, border="#140c1c"):
+    bm = jp_bitmap(text, 16, vertical)
+    if bm is None:
+        return None
+    h, w = bm.shape
+    a = np.zeros((h + 2 * pad, w + 2 * pad, 4), np.uint8)
+    a[..., :3] = C(border)
+    a[..., 3] = 255
+    a[1:-1, 1:-1, :3] = C(bg)
+    a[pad:pad + h, pad:pad + w][bm, :3] = C(fg)
+    return a
+
+
+def jp_text(img, x, y, text, col, outline="#140c1c"):
+    bm = jp_bitmap(text, 12)
+    if bm is None:
+        return
+    H, W = img.shape[:2]
+    ys, xs = np.nonzero(bm)
+    for oy in (-1, 0, 1):
+        for ox in (-1, 0, 1):
+            yy, xx = ys + y + oy, xs + x + ox
+            ok = (yy >= 0) & (yy < H) & (xx >= 0) & (xx < W)
+            img[yy[ok], xx[ok]] = C(outline)
+    yy, xx = ys + y, xs + x
+    ok = (yy >= 0) & (yy < H) & (xx >= 0) & (xx < W)
+    img[yy[ok], xx[ok]] = C(col)
+
+
+KANBAN = [  # vertical projecting shop signs: text, background, ink
+    ("ラーメン", "#e8303c", "#fff6e8"),
+    ("寿司", "#f6f0e2", "#1a1020"),
+    ("居酒屋", "#4a2c1c", "#ffe8b0"),
+    ("喫茶", "#2d6a3e", "#f6f0e2"),
+    ("カラオケ", "#ff5aa8", "#ffffff"),
+    ("たこ焼き", "#f2a41e", "#1a1020"),
+]
+
+
+def add_kanban(s, sg, z, idx):
+    text, bg, fg = KANBAN[idx % len(KANBAN)]
+    spr = sign_sprite(text, bg, fg)
+    if spr is not None:
+        s.sprite(spr, sg * (XB - 0.6), 3.9, z, 1.05, OBJ)
+
+
+def add_noren(s, sg, z, text="らーめん", cloth="#22306a"):
+    """Split curtain over a restaurant door, facing up the street."""
+    bm = jp_bitmap(text, 16)
+    if bm is None:
+        return
+    h, w = bm.shape
+    a = np.zeros((h + 10, w + 4, 4), np.uint8)
+    a[..., :3] = C(cloth)
+    a[..., 3] = 255
+    a[:2, :, :3] = C("#5a3a28")
+    a[5:5 + h, 2:2 + w][bm, :3] = C("#f6f0e2")
+    for k in range(1, len(text)):
+        a[h // 2 + 6:, 2 + k * 16 - 1, 3] = 0
+    s.sprite(a, sg * (XB - 1.4), 1.7, z, 2.3, OBJ)
+
+
+def petals(img, n=70, seed=6):
+    H, W = img.shape[:2]
+    rng = random.Random(seed)
+    for _ in range(n):
+        x, y = rng.randrange(W - 1), rng.randrange(H - 1)
+        img[y, x] = C("#ffc4d8")
+        if rng.random() < 0.5:
+            img[y, x + 1] = C("#f08ab0")
+    return img
 
 
 def add_skyline(s, Z, seed=5, spire=False, eureka=True):
@@ -1253,9 +1423,54 @@ def scene_roster():
     save(img, "e-roster", 4)
 
 
+def scene_f():
+    """Chosen direction: Swanston St (trams only) at noon, 16:9, 64 colours, no dither,
+    6.4 m chase-cam pitched down, Melbourne with an anime Japan flavour."""
+    cam = (3.0, 6.4, -6.5)
+    s = Scene(320, 180, 200, 58, cam)
+    add_runner(s, 3.0, 1.0, y=3.33)
+    for k in range(5):
+        add_coin(s, 3.0, 3.75, 5 + k * 3.2)
+    for k in range(5):
+        add_coin(s, -3.0, 0.7 + 1.2 * math.sin(k / 4 * math.pi), 9 + k * 2.4)
+    add_tram(s, "G", 3.0, -20)
+    add_tram(s, "Z", 0.0, 7)
+    add_tram(s, "W", 0.0, 34)
+    add_tram(s, "E", -3.0, 30)
+    add_tram(s, "W", 3.0, 26, "Wcc")
+    add_tram(s, "Z", 3.0, 62)
+    add_barrier(s, -3.0, 21)
+    lantern = make_sprite(LANTERN_ART)
+    for sg in (-1, 1):
+        for k in range(7):
+            z = 14 + k * 17 + (8 if sg > 0 else 0)
+            add_tree(s, sg * 6.95, z, 6.5, seed=200 + k + (sg > 0) * 50, leaves=SAKURA)
+        for k in range(14):
+            s.sprite(lantern, sg * 7.35, 2.35, 3 + k * 3.2, 0.42, OBJ)
+    for k, (sg, z) in enumerate(((1, 8), (-1, 6), (1, 26), (-1, 24), (1, 44), (-1, 40), (1, 66), (-1, 60))):
+        add_kanban(s, sg, z, k)
+    add_noren(s, 1, 5.5)
+    add_noren(s, -1, 11, "すし", "#7c1f28")
+    add_street(s, 232, seed=12, tall=0.65, verandah_top=("#e8303c", "#f4f0e8"), tram_only=True)
+    add_library(s, 232)
+    rng = random.Random(21)
+    sky_fill(s, [(0, "#2f7ee6"), (0.65, "#78c0f4"), (1.0, "#d8f0ff")],
+             clouds=[(cloud(70, 16, 0.9, rng), "#ffffff", "#b8ccf0", None),
+                     (cloud(250, 24, 1.0, rng), "#ffffff", "#b8ccf0", None)])
+    light_and_fog(s, "#cfe4f2", 230)
+    outlines(s)
+    img = speed_lines(s.img, s.hor, n=24, alpha=0.4)
+    img = quantise(img, 64)
+    img = petals(img)
+    hud_standard(img, "0064280", "0187", "x4", "SWANSTON ST")
+    jp_text(img, (320 - 8 * 12) // 2, 5, "スワンストン通り", "#ffffff")
+    save(img, "f-swanston-direction", 4)
+
+
 if __name__ == "__main__":
     scene_a()
     scene_b()
     scene_c()
     scene_d()
     scene_roster()
+    scene_f()
