@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#2f7ee6">
+<title>Tram Surfer</title>
+<meta name="description" content="Run across the tops of Melbourne trams. A dingo is right behind you.">
+<style>
+  html, body { margin: 0; height: 100%; background: #140c1c; overflow: hidden; }
+  body { display: flex; align-items: center; justify-content: center; }
+  canvas {
+    display: block;
+    image-rendering: pixelated;
+    image-rendering: crisp-edges;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+  }
+  noscript { color: #fff; font: 16px sans-serif; }
+</style>
+</head>
+<body>
+<canvas id="screen" width="320" height="180" aria-label="Tram Surfer game"></canvas>
+<noscript>Tram Surfer needs JavaScript.</noscript>
+<script>
+  // scale the 320x180 screen to fit, in whole pixels when there's room
+  (function () {
+    const cv = document.getElementById('screen');
+    function fit() {
+      const w = innerWidth, h = innerHeight;
+      let s = Math.min(w / 320, h / 180);
+      if (s >= 2) s = Math.floor(s * devicePixelRatio) / devicePixelRatio;
+      cv.style.width = Math.round(320 * s) + 'px';
+      cv.style.height = Math.round(180 * s) + 'px';
+    }
+    addEventListener('resize', fit);
+    fit();
+  })();
+</script>
+<script type="module" src="src/main.js"></script>
+</body>
+</html>

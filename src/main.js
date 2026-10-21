@@ -1,0 +1,213 @@
+// Tram Surfer: boot, main loop, input and the screen flow
+// (intro -> start screen -> run -> game over).
+
+import { W, H, Frame } from './gfx.js';
+import { Scene, TAG } from './render.js';
+import { Street, drawBarrier, drawRamp, drawCoin } from './street.js';
+import { drawTram } from './trams.js';
+import { RUNNER } from './sprites.js';
+import { dingoBackSprite } from './characters.js';
+import { Run } from './game.js';
+import { Sound } from './audio.js';
+import * as S from './screens.js';
+
+const canvas = document.getElementById('screen');
+const ctx = canvas.getContext('2d');
+const imageData = ctx.createImageData(W, H);
+const out32 = new Uint32Array(imageData.data.buffer);
+const frame = new Frame();
+const scene = new Scene(frame);
+const btns = new S.Buttons();
+const sound = new Sound();
+let street = new Street();
+
+const DINGO = [0, 0.25, 0.5, 0.75].map(dingoBackSprite);
+const BEST_KEY = 'tram-surfer:best';
+let best = 0;
+try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch { /* private mode */ }
+
+let state = 'intro';
+let stateT = 0;
+let run = null;
+let volFlash = 0;
+
+function setState(s) {
+  state = s;
+  stateT = 0;
+}
+
+function newRun() {
+  street = new Street();
+  const seed = (Math.random() * 2 ** 31) | 0;
+  run = new Run(seed, (e, arg) => {
+    sound.play(e);
+    if (e === 'crash') sound.muffle(0.75);
+  });
+  sound.newRun(seed);
+  setState('play');
+}
+
+function endRun() {
+  if (run.score > best) {
+    best = Math.floor(run.score);
+    try { localStorage.setItem(BEST_KEY, String(best)); } catch { /* ignore */ }
+  }
+}
+
+// --- actions (keyboard, touch and on-screen buttons all come through here) ------------
+
+function act(a) {
+  if (!a) return;
+  sound.unlock();
+  switch (a) {
+    case 'skip': setState('title'); break;
+    case 'start': sound.play('start'); newRun(); break;
+    case 'left': if (state === 'play') run.move(-1); break;
+    case 'right': if (state === 'play') run.move(1); break;
+    case 'jump': if (state === 'play') run.jump(); break;
+    case 'roll': if (state === 'play') run.roll(); break;
+    case 'pause':
+      if (state === 'play' && !run.over) { setState('paused'); sound.muffle(0.85); sound.play('click'); }
+      else if (state === 'paused') act('resume');
+      break;
+    case 'resume': setState('play'); sound.muffle(0); sound.play('click'); break;
+    case 'quit': sound.pauseMusic(); setState('title'); break;
+    case 'retry': sound.play('start'); newRun(); break;
+    case 'mute': sound.toggleMute(); volFlash = 1.5; sound.play('click'); break;
+    case 'vol-': sound.setLevel(sound.level - 1); volFlash = 1.5; sound.play('click'); break;
+    case 'vol+': sound.setLevel(sound.level + 1); volFlash = 1.5; sound.play('click'); break;
+  }
+}
+
+const KEYS = {
+  ArrowLeft: 'left', KeyA: 'left', ArrowRight: 'right', KeyD: 'right',
+  ArrowUp: 'jump', KeyW: 'jump', Space: 'jump', ArrowDown: 'roll', KeyS: 'roll',
+  KeyP: 'pause', Escape: 'pause', KeyM: 'mute', Minus: 'vol-', NumpadSubtract: 'vol-', Equal: 'vol+', NumpadAdd: 'vol+',
+};
+
+addEventListener('keydown', (e) => {
+  if (e.repeat && !['vol-', 'vol+'].includes(KEYS[e.code])) return;
+  let a = KEYS[e.code];
+  if (state === 'intro') a = 'skip';
+  else if (state === 'title' && ['Enter', 'Space', 'ArrowUp', 'KeyW'].includes(e.code)) a = 'start';
+  else if (state === 'over' && stateT > 1 && (e.code === 'Enter' || e.code === 'Space')) a = 'retry';
+  else if (state === 'paused' && (e.code === 'Enter' || e.code === 'Space')) a = 'resume';
+  if (a) {
+    e.preventDefault();
+    act(a);
+  }
+});
+
+// touch / mouse: swipes steer, taps press buttons
+function toScreen(e) {
+  const r = canvas.getBoundingClientRect();
+  return [((e.clientX - r.left) / r.width) * W, ((e.clientY - r.top) / r.height) * H];
+}
+
+let touch = null;
+canvas.addEventListener('pointerdown', (e) => {
+  e.preventDefault();
+  canvas.setPointerCapture?.(e.pointerId);
+  touch = { x: e.clientX, y: e.clientY, done: false, id: e.pointerId };
+  sound.unlock();
+  if (state === 'intro') return act('skip');
+  const [sx, sy] = toScreen(e);
+  const b = btns.hit(sx, sy);
+  if (b && (state !== 'play' || b === 'pause' || b === 'mute')) {
+    touch.done = true;
+    act(b);
+  }
+});
+canvas.addEventListener('pointermove', (e) => {
+  if (!touch || touch.done || touch.id !== e.pointerId) return;
+  const dx = e.clientX - touch.x, dy = e.clientY - touch.y;
+  const r = canvas.getBoundingClientRect();
+  const th = Math.max(14, r.width * 0.03);
+  if (Math.abs(dx) < th && Math.abs(dy) < th) return;
+  touch.done = true;
+  if (Math.abs(dx) > Math.abs(dy)) act(dx < 0 ? 'left' : 'right');
+  else act(dy < 0 ? 'jump' : 'roll');
+});
+const endTouch = () => { touch = null; };
+canvas.addEventListener('pointerup', endTouch);
+canvas.addEventListener('pointercancel', endTouch);
+document.addEventListener('visibilitychange', () => { if (document.hidden && state === 'play' && run && !run.over) act('pause'); });
+
+// --- drawing ------------------------------------------------------------------------------
+
+function drawWorld(dt) {
+  const cam = run.camera();
+  scene.hor = cam.hor;
+  scene.begin(cam, S.skyFor(cam.hor));
+  const p = run.p, t = run.time;
+
+  // the kid, with a shadow on whatever he is over
+  const air = !p.grounded;
+  let spr = RUNNER.runA, w = 0.95;
+  if (p.roll > 0) { spr = RUNNER.roll; w = 0.8; }
+  else if (air) spr = RUNNER.jump;
+  else if (Math.floor(t * run.speed * 0.6) % 2) spr = RUNNER.runB;
+  scene.sprite(spr, p.x, p.y, p.z, w, TAG.RUNNER);
+  const sy = p.support + 0.02, sr = Math.max(0.3, 0.55 - (p.y - p.support) * 0.08);
+  scene.floor(sy, p.x - 0.6, p.x + 0.6, p.z - 0.4, p.z + 0.4, (x, z) => {
+    const d = ((x - p.x) / sr) ** 2 + ((z - p.z) / (sr * 0.55)) ** 2;
+    return d < 1 ? 0x2a2630 : -1;
+  }, TAG.RUNNER);
+
+  // the dingo, when it's close
+  const dg = run.dingo;
+  if (dg.gap < 7.3) {
+    const ds = DINGO[Math.floor(t * 12) % 4];
+    const hop = run.over ? Math.sin(dg.pounce * Math.PI) * 1.2 : Math.abs(Math.sin(t * 12)) * 0.12;
+    scene.sprite(ds, dg.x, dg.y + hop, p.z - dg.gap, 1.15, TAG.RUNNER);
+  }
+
+  for (const c of run.coinList) if (c.z > p.z - 1 && c.z < p.z + 120) drawCoin(scene, c, t);
+  for (const b of run.barriers) if (b.z > p.z - 1) drawBarrier(scene, b);
+  for (const r of run.ramps) if (r.z + r.len > scene.cz) drawRamp(scene, r);
+  const trams = run.trams.filter((tr) => tr.z + tr.L > scene.cz && tr.z < scene.cz + 240).sort((a, b) => a.z - b.z);
+  for (const tr of trams) drawTram(scene, tr);
+  street.draw(scene);
+  scene.outlines();
+  S.speedLines(frame, cam.hor, t, run.speed);
+  S.petals(frame, t, dt);
+}
+
+let last = performance.now();
+function loop(now) {
+  const dt = Math.min(0.05, (now - last) / 1000);
+  last = now;
+  stateT += dt;
+  if (volFlash > 0) volFlash -= dt;
+  btns.clear();
+
+  if (state === 'intro') {
+    S.intro(frame, stateT * 1000, (s) => sound.play(s));
+    if (stateT * 1000 > S.INTRO_MS) setState('title');
+  } else if (state === 'title') {
+    S.title(frame, btns, stateT, best);
+    S.petals(frame, stateT, dt);
+  } else if (state === 'play' || state === 'paused' || state === 'over') {
+    if (state === 'play') {
+      // fixed small steps keep collisions honest at high speed
+      let left = dt;
+      while (left > 0) {
+        const h = Math.min(1 / 120, left);
+        run.update(h);
+        left -= h;
+      }
+      sound.tempo(1 + (run.speed - 13) / 60);
+      if (run.over && run.overT > 0.9) { endRun(); setState('over'); }
+    } else if (state === 'over') run.update(dt);
+    drawWorld(state === 'paused' ? 0 : dt);
+    if (state === 'over') S.gameOver(frame, btns, run, best, stateT);
+    else S.hud(frame, btns, run, sound, volFlash);
+    if (state === 'paused') S.pauseMenu(frame, btns, sound);
+  }
+  frame.present(ctx, imageData, out32);
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+
+// handy for poking at the game from the console
+globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; } };
