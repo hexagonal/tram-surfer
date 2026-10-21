@@ -1,0 +1,482 @@
+<meta charset="utf-8">
+<title>Tram Surfer Radio</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=DotGothic16&family=Zen+Kaku+Gothic+New:wght@400;500;700&display=swap">
+<style>
+  /* Layout: a tram destination sign over a 320x180 pixel visualiser, with the
+     control desk beside it on wide screens and below it on phones.
+     One committed night palette: the radio plays after dark. */
+  :root {
+    --night: #12142b;
+    --panel: #1a1d3a;
+    --raised: #23274b;
+    --line: #333867;
+    --ink: #ece6d6;
+    --muted: #a3a5c8;
+    --mustard: #e3a92b;
+    --led: #ffb43a;
+    --led-dim: #4a3315;
+    --pink: #ff86b0;
+    --teal: #63d3c3;
+    --font-display: "DotGothic16", "Hiragino Kaku Gothic ProN", monospace;
+    --font-body: "Zen Kaku Gothic New", "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+    --font-code: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+    color-scheme: dark;
+  }
+  html { background: var(--night); }
+  [hidden] { display: none !important; }
+  body {
+    background: var(--night);
+    color: var(--ink);
+    font-family: var(--font-body);
+    font-size: 15px;
+    line-height: 1.5;
+    padding-left: max(16px, env(safe-area-inset-left, 0px));
+    padding-right: max(16px, env(safe-area-inset-right, 0px));
+    padding-block: 20px 40px;
+  }
+  .wrap { max-width: 1120px; margin: 0 auto; display: grid; gap: 20px; }
+  header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px 14px; }
+  h1 { font-family: var(--font-display); font-weight: 400; font-size: clamp(26px, 4vw, 36px); margin: 0; letter-spacing: 0.02em; color: var(--mustard); text-wrap: balance; }
+  header .jp { font-family: var(--font-display); color: var(--muted); font-size: 16px; }
+  header p { flex-basis: 100%; margin: 0; color: var(--muted); max-width: 65ch; }
+
+  .main { display: grid; gap: 20px; grid-template-columns: minmax(0, 1.7fr) minmax(280px, 1fr); align-items: start; }
+  @media (max-width: 900px) { .main { grid-template-columns: minmax(0, 1fr); } }
+  .stage { display: grid; gap: 12px; min-width: 0; }
+
+  /* Destination sign */
+  .sign { display: grid; grid-template-columns: auto minmax(0, 1fr); background: #07070c; border: 3px solid #2a2a33; border-radius: 6px; overflow: hidden; box-shadow: inset 0 0 0 1px #000; }
+  .route { font-family: var(--font-display); color: var(--led); background: #0d0b08; border-right: 3px solid #2a2a33; display: grid; place-items: center; min-width: 3.2em; padding: 6px 12px; font-size: clamp(34px, 6vw, 52px); line-height: 1; text-shadow: 0 0 8px rgba(255, 180, 58, 0.55); }
+  .dest { padding: 10px 14px; display: grid; gap: 2px; min-width: 0; font-family: var(--font-display); color: var(--led); text-shadow: 0 0 6px rgba(255, 180, 58, 0.45); background-image: radial-gradient(var(--led-dim) 0.6px, transparent 0.8px); background-size: 4px 4px; }
+  .dest .title { font-size: clamp(20px, 3.2vw, 28px); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .dest .meta { font-size: 15px; color: #ffcd7a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .screen { position: relative; aspect-ratio: 16 / 9; max-width: 100%; background: #000; border-radius: 6px; overflow: hidden; border: 1px solid var(--line); }
+  .screen canvas { width: 100%; height: 100%; display: block; image-rendering: pixelated; image-rendering: crisp-edges; }
+  .chord { position: absolute; top: 10px; left: 12px; font-family: var(--font-display); font-size: clamp(18px, 3vw, 26px); color: var(--ink); text-shadow: 2px 2px 0 #000; pointer-events: none; }
+  .overlay { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 10, 25, 0.35); }
+  .overlay button { font-size: 18px; padding: 12px 26px; }
+
+  /* Track timeline */
+  .timeline { display: grid; gap: 6px; }
+  .timeline .row { display: flex; justify-content: space-between; gap: 12px; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+  .timeline .row b { color: var(--ink); font-weight: 500; }
+  .bars { position: relative; display: flex; gap: 2px; height: 22px; }
+  .bars .sec { flex: var(--bars) 1 0; background: var(--raised); border-radius: 2px; font-size: 11px; color: var(--muted); display: flex; align-items: center; padding-left: 6px; overflow: hidden; white-space: nowrap; }
+  .bars .sec.mel { background: color-mix(in srgb, var(--accent, var(--pink)) 30%, var(--raised)); color: var(--ink); }
+  .bars .needle { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--mustard); left: 0; border-radius: 1px; }
+
+  /* Control desk */
+  .desk { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; display: grid; gap: 18px; min-width: 0; }
+  .group { display: grid; gap: 8px; }
+  .label { font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+  .buttons { display: flex; flex-wrap: wrap; gap: 8px; }
+  button, .seg label, .chip label { font-family: var(--font-body); font-size: 14px; color: var(--ink); background: var(--raised); border: 1px solid var(--line); border-radius: 6px; padding: 8px 14px; cursor: pointer; }
+  button:hover, .seg label:hover, .chip label:hover { border-color: var(--muted); }
+  button:focus-visible, input:focus-visible + label, input[type="text"]:focus-visible, input[type="range"]:focus-visible { outline: 2px solid var(--mustard); outline-offset: 2px; }
+  button.primary { background: var(--mustard); color: #1b1404; border-color: var(--mustard); font-weight: 700; min-width: 6.5em; }
+  button.primary:hover { filter: brightness(1.08); }
+
+  form.seed { display: flex; gap: 8px; }
+  form.seed input { flex: 1 1 auto; min-width: 0; font-family: var(--font-code); font-size: 14px; color: var(--ink); background: var(--night); border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; }
+
+  .seg { display: flex; }
+  .seg input, .chip input { position: absolute; opacity: 0; pointer-events: none; }
+  .seg label { border-radius: 0; flex: 1 1 0; text-align: center; padding: 8px 6px; }
+  .seg label:first-of-type { border-radius: 6px 0 0 6px; }
+  .seg label:last-of-type { border-radius: 0 6px 6px 0; }
+  .seg label + input + label { border-left-width: 0; }
+  .seg input:checked + label { background: var(--ink); color: var(--night); border-color: var(--ink); font-weight: 700; }
+
+  .slider { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 2px 10px; align-items: center; }
+  .slider label { font-size: 14px; }
+  .slider output { font-variant-numeric: tabular-nums; color: var(--muted); font-size: 13px; }
+  .slider input { grid-column: 1 / -1; width: 100%; accent-color: var(--mustard); }
+  .slider small { grid-column: 1 / -1; color: var(--muted); font-size: 12px; }
+
+  .chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .chip label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font-size: 13px; }
+  .chip label::before { content: ""; width: 9px; height: 9px; border-radius: 2px; background: var(--c); opacity: 0.25; }
+  .chip input:checked + label::before { opacity: 1; }
+  .chip input:not(:checked) + label { color: var(--muted); text-decoration: line-through; }
+
+  /* History + code */
+  .lower { display: grid; gap: 20px; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+  @media (max-width: 900px) { .lower { grid-template-columns: minmax(0, 1fr); } }
+  h2 { font-size: 13px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin: 0 0 8px; }
+  ol.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+  ol.history li { display: grid; grid-template-columns: 3em minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 10px; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; }
+  ol.history .r { font-family: var(--font-display); color: var(--led); font-size: 20px; text-align: center; }
+  ol.history .t { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  ol.history .s { font-size: 12px; color: var(--muted); white-space: nowrap; font-variant-numeric: tabular-nums; }
+  ol.history li.now { border-color: var(--mustard); }
+  .empty { color: var(--muted); font-size: 14px; }
+  pre { margin: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 12px 14px; overflow-x: auto; font-family: var(--font-code); font-size: 12.5px; line-height: 1.55; color: var(--ink); }
+  pre .c { color: var(--muted); }
+  .note { color: var(--muted); font-size: 13px; margin: 8px 0 0; max-width: 65ch; }
+
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto; } }
+</style>
+
+<div class="wrap">
+  <header>
+    <h1>Tram Surfer Radio</h1>
+    <span class="jp">トラム・サーファー・ラジオ</span>
+    <p>Endless lofi, made up as it plays. Hip-hop and Japanese city pop take turns about every 90 seconds, and each new game gets its own music from its seed.</p>
+  </header>
+
+  <div class="main">
+    <div class="stage">
+      <div class="sign" aria-live="polite">
+        <div class="route" id="route">--</div>
+        <div class="dest">
+          <div class="title" id="trackTitle">Loading…</div>
+          <div class="meta" id="trackMeta"></div>
+        </div>
+      </div>
+
+      <div class="screen">
+        <canvas id="viz" width="320" height="180" aria-label="Notes scrolling past as they play"></canvas>
+        <div class="chord" id="chord"></div>
+        <div class="overlay" id="overlay"><button class="primary" id="bigPlay" type="button">▶ Play</button></div>
+      </div>
+
+      <div class="timeline">
+        <div class="row"><span id="barText">Bar 1 of 32</span><span>Next track in <b id="countdown">1:30</b></span></div>
+        <div class="bars" id="bars"><div class="needle" id="needle"></div></div>
+      </div>
+    </div>
+
+    <div class="desk">
+      <div class="group">
+        <div class="label">Playback</div>
+        <div class="buttons">
+          <button class="primary" id="play" type="button">▶ Play</button>
+          <button id="skip" type="button">Next track</button>
+          <button id="newGame" type="button">New game</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <label class="label" for="seed">Game seed</label>
+        <form class="seed" id="seedForm">
+          <input id="seed" type="text" autocomplete="off" spellcheck="false">
+          <button type="submit">Load</button>
+        </form>
+      </div>
+
+      <div class="group">
+        <div class="label" id="styleLabel">Style</div>
+        <div class="seg" role="radiogroup" aria-labelledby="styleLabel">
+          <input type="radio" name="style" id="st-auto" value="auto" checked><label for="st-auto">Alternate</label>
+          <input type="radio" name="style" id="st-hiphop" value="hiphop"><label for="st-hiphop">Hip-hop</label>
+          <input type="radio" name="style" id="st-citypop" value="citypop"><label for="st-citypop">City pop</label>
+        </div>
+      </div>
+
+      <div class="slider">
+        <label for="volume">Volume</label><output id="volumeOut" for="volume">80%</output>
+        <input id="volume" type="range" min="0" max="100" value="80">
+      </div>
+      <div class="slider">
+        <label for="tempo">Run speed</label><output id="tempoOut" for="tempo">×1.00</output>
+        <input id="tempo" type="range" min="80" max="130" value="100">
+        <small>The game can nudge tempo up as the runner speeds up.</small>
+      </div>
+      <div class="slider">
+        <label for="muffle">Muffle</label><output id="muffleOut" for="muffle">0%</output>
+        <input id="muffle" type="range" min="0" max="100" value="0">
+        <small>For the pause menu, game over, or riding through a tunnel.</small>
+      </div>
+
+      <div class="group">
+        <div class="label">Layers</div>
+        <div class="chips" id="chips"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="lower">
+    <section>
+      <h2>Tracks this game</h2>
+      <ol class="history" id="history"></ol>
+      <p class="empty" id="historyEmpty">Press play. Each track that starts is listed here.</p>
+    </section>
+    <section>
+      <h2>In the game</h2>
+<pre><span class="c">// music/lofi.js, no samples or dependencies</span>
+import { LofiMusic } from './music/lofi.js';
+
+const music = new LofiMusic({ seed: runSeed });
+startButton.onclick = () =&gt; music.start();
+
+music.newGame(nextSeed);   <span class="c">// new run, new music</span>
+music.setTempoScale(1.15); <span class="c">// runner speeding up</span>
+music.setMuffle(0.8);      <span class="c">// paused</span>
+music.on('note', n =&gt; ...); <span class="c">// sync visuals to the beat</span></pre>
+      <p class="note">Everything is synthesised with Web Audio: FM electric piano, sub bass, drum machine, vinyl crackle and tape wobble. A tram bell rings at the start of every track.</p>
+    </section>
+  </div>
+</div>
+
+<script type="module">
+  import { LofiMusic, Rng, hashSeed, PARTS } from './lofi.js';
+
+  const PART_UI = {
+    drums: ['Drums', '#ece6d6'],
+    bass: ['Bass', '#63d3c3'],
+    keys: ['Keys', '#f5d48a'],
+    pad: ['Pad', '#a99cff'],
+    melody: ['Melody', '#ff86b0'],
+    vinyl: ['Vinyl', '#9a8f7a'],
+    bell: ['Tram bell', '#e3a92b'],
+  };
+  const $ = (id) => document.getElementById(id);
+  const music = new LofiMusic({ volume: 0.8 });
+
+  // ---- controls
+  const playBtns = [$('play'), $('bigPlay')];
+  function togglePlay() {
+    if (music.playing) music.stop();
+    else music.start();
+    syncPlay();
+  }
+  function syncPlay() {
+    $('play').textContent = music.playing ? '❚❚ Pause' : '▶ Play';
+    $('overlay').hidden = music.playing;
+  }
+  playBtns.forEach((b) => b.addEventListener('click', togglePlay));
+  $('skip').addEventListener('click', () => music.skip());
+  $('newGame').addEventListener('click', () => loadSeed());
+  $('seedForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const v = $('seed').value.trim();
+    loadSeed(v || undefined);
+  });
+  document.querySelectorAll('input[name="style"]').forEach((r) => r.addEventListener('change', () => music.setStyle(r.value)));
+
+  const fmtPct = (v) => `${Math.round(v)}%`;
+  $('volume').addEventListener('input', (e) => { music.setVolume(e.target.value / 100); $('volumeOut').textContent = fmtPct(e.target.value); });
+  $('tempo').addEventListener('input', (e) => { music.setTempoScale(e.target.value / 100); $('tempoOut').textContent = `×${(e.target.value / 100).toFixed(2)}`; });
+  $('muffle').addEventListener('input', (e) => { music.setMuffle(e.target.value / 100); $('muffleOut').textContent = fmtPct(e.target.value); });
+
+  for (const p of PARTS) {
+    const [name, color] = PART_UI[p];
+    const wrap = document.createElement('span');
+    wrap.className = 'chip';
+    wrap.innerHTML = `<input type="checkbox" id="part-${p}" checked><label for="part-${p}" style="--c:${color}">${name}</label>`;
+    wrap.querySelector('input').addEventListener('change', (e) => music.setPart(p, e.target.checked));
+    $('chips').append(wrap);
+  }
+
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'Space' && !(e.target instanceof HTMLInputElement || e.target instanceof HTMLButtonElement)) {
+      e.preventDefault();
+      togglePlay();
+    }
+  });
+
+  // ---- game seed + history
+  const history = [];
+  function loadSeed(seed) {
+    const s = music.newGame(seed);
+    $('seed').value = s;
+    history.length = 0;
+    renderHistory();
+    skyline = makeSkyline(s);
+    notes.length = 0;
+    shownTrack = null;
+  }
+
+  music.on('track', (info) => {
+    const delay = Math.max(0, (info.time - music.ctx.currentTime) * 1000);
+    setTimeout(() => {
+      history.unshift(info);
+      if (history.length > 12) history.pop();
+      renderHistory();
+    }, delay);
+  });
+
+  function renderHistory() {
+    const ol = $('history');
+    ol.innerHTML = '';
+    history.forEach((t, i) => {
+      const li = document.createElement('li');
+      if (i === 0) li.className = 'now';
+      li.innerHTML = `<span class="r"></span><span class="t"></span><span class="s"></span>`;
+      li.querySelector('.r').textContent = t.route;
+      li.querySelector('.t').textContent = t.title;
+      li.querySelector('.s').textContent = `${t.styleLabel} · ${t.key} · ${t.bpm}`;
+      ol.append(li);
+    });
+    $('historyEmpty').hidden = history.length > 0;
+  }
+
+  // ---- sign + timeline
+  let shownTrack = null;
+  function showTrack(t) {
+    shownTrack = t;
+    $('route').textContent = t.route;
+    $('trackTitle').textContent = t.title;
+    $('trackMeta').textContent = `${t.styleLabel} ${t.styleJp} · ${t.key} · ${t.bpm} BPM`;
+    document.documentElement.style.setProperty('--accent', t.style === 'citypop' ? '#ff86b0' : '#63d3c3');
+    const bars = $('bars');
+    bars.querySelectorAll('.sec').forEach((n) => n.remove());
+    t.sections.forEach((s, i) => {
+      const d = document.createElement('div');
+      d.className = 'sec' + (s.melody ? ' mel' : '');
+      d.style.setProperty('--bars', s.len);
+      d.textContent = s.kind === 'intro' ? 'intro' : s.melody ? 'melody' : 'groove';
+      bars.insertBefore(d, $('needle'));
+    });
+  }
+
+  const fmtTime = (s) => `${Math.floor(s / 60)}:${String(Math.floor(s % 60)).padStart(2, '0')}`;
+
+  // ---- visualiser (320x180, same native resolution as the game)
+  const cv = $('viz');
+  const g = cv.getContext('2d');
+  const W = 320, H = 180;
+  const notes = [];
+  music.on('note', (n) => { if (n.part !== 'vinyl') notes.push(n); });
+
+  let skyline = makeSkyline(music.seed);
+  function makeSkyline(seed) {
+    const r = new Rng(hashSeed(seed, 'skyline'));
+    const b = [];
+    let x = -4;
+    while (x < W) {
+      const w = r.int(10, 26);
+      const h = r.int(14, 46);
+      const spire = r.chance(0.12);
+      const wins = [];
+      for (let wy = 4; wy < h - 3; wy += 4) for (let wx = 2; wx < w - 2; wx += 4) if (r.chance(0.35)) wins.push([wx, wy, r.chance(0.2)]);
+      b.push({ x, w, h, spire, wins, shade: r.int(0, 2) });
+      x += w + r.int(0, 3);
+    }
+    return b;
+  }
+
+  const SKY = {
+    hiphop: ['#1a1840', '#3a2a5c', '#6b3d63'],
+    citypop: ['#241a4a', '#7a2f6b', '#ff8a6a'],
+  };
+  const NOTE_LO = 30, NOTE_HI = 96, ROLL_TOP = 30, ROLL_BOTTOM = 124;
+  const PX_PER_SEC = 46, PLAYHEAD = 256;
+  let kickFlash = 0;
+
+  function draw() {
+    const st = music.getState();
+    if (st.track && (!shownTrack || shownTrack.index !== st.track.index || shownTrack.style !== st.track.style)) showTrack(st.track);
+    $('chord').textContent = st.chord || '';
+    const tr = st.track;
+    if (tr) {
+      $('barText').textContent = `Bar ${Math.min(tr.bars, Math.floor(st.bar) + 1)} of ${tr.bars}`;
+      $('countdown').textContent = fmtTime(st.playing ? st.secondsLeft : tr.bars * 240 / tr.bpm);
+      $('needle').style.left = `calc(${(st.progress * 100).toFixed(2)}% - 1px)`;
+    }
+
+    const now = music.ctx.currentTime;
+    const style = tr ? tr.style : 'hiphop';
+    const sky = SKY[style];
+    const grad = g.createLinearGradient(0, 0, 0, H);
+    grad.addColorStop(0, sky[0]);
+    grad.addColorStop(0.55, sky[1]);
+    grad.addColorStop(1, sky[2]);
+    g.fillStyle = grad;
+    g.fillRect(0, 0, W, H);
+
+    // stars
+    g.fillStyle = 'rgba(255,255,255,0.5)';
+    for (let i = 0; i < 24; i++) g.fillRect((i * 97 + 13) % W, (i * 53 + 7) % 60, 1, 1);
+
+    // notes
+    for (let i = notes.length - 1; i >= 0; i--) if (notes[i].time + notes[i].dur < now - 6) notes.splice(i, 1);
+    for (const n of notes) {
+      const x0 = Math.round(PLAYHEAD + (n.time - now) * PX_PER_SEC);
+      if (n.part === 'drums') {
+        const lane = n.midi === 36 ? 0 : n.midi === 38 || n.midi === 39 || n.midi === 37 ? 1 : 2;
+        const y = 128 + lane * 4;
+        g.fillStyle = lane === 0 ? '#ffe2a8' : lane === 1 ? '#ece6d6' : 'rgba(236,230,214,0.55)';
+        g.fillRect(x0, y, lane === 2 ? 1 : 2, 2);
+        if (lane === 0 && n.time <= now && now - n.time < 0.12) kickFlash = 1;
+        continue;
+      }
+      if (n.part === 'bell') {
+        if (n.time <= now && now - n.time < 1.2) {
+          g.fillStyle = 'rgba(227,169,43,' + (1 - (now - n.time) / 1.2).toFixed(2) + ')';
+          g.fillRect(0, 0, W, 2);
+        }
+        continue;
+      }
+      const w = Math.max(1, Math.round(n.dur * PX_PER_SEC));
+      if (x0 > W || x0 + w < 0) continue;
+      const y = Math.round(ROLL_BOTTOM - ((n.midi - NOTE_LO) / (NOTE_HI - NOTE_LO)) * (ROLL_BOTTOM - ROLL_TOP));
+      const live = n.time <= now && n.time + n.dur >= now;
+      g.globalAlpha = n.part === 'pad' ? 0.35 : live ? 1 : 0.55 + n.vel * 0.3;
+      g.fillStyle = PART_UI[n.part][1];
+      g.fillRect(x0, y, w, n.part === 'bass' ? 3 : 2);
+      if (live && n.part !== 'pad') {
+        g.fillStyle = '#fff';
+        g.fillRect(PLAYHEAD - 1, y - 1, 3, 4);
+      }
+      g.globalAlpha = 1;
+    }
+    g.fillStyle = 'rgba(255,255,255,0.18)';
+    g.fillRect(PLAYHEAD, ROLL_TOP - 4, 1, ROLL_BOTTOM - ROLL_TOP + 16);
+
+    // skyline
+    const base = 160;
+    for (const b of skyline) {
+      g.fillStyle = ['#0f0e24', '#141230', '#181638'][b.shade];
+      g.fillRect(b.x, base - b.h, b.w, b.h);
+      if (b.spire) g.fillRect(b.x + (b.w >> 1), base - b.h - 10, 1, 10);
+      for (const [wx, wy, warm] of b.wins) {
+        g.fillStyle = warm ? '#ffb43a' : '#f5e6b0';
+        g.globalAlpha = 0.75;
+        g.fillRect(b.x + wx, base - b.h + wy, 1, 2);
+      }
+      g.globalAlpha = 1;
+    }
+    // overhead wire, road, rails
+    g.fillStyle = '#05050f';
+    g.fillRect(0, 141, W, 1);
+    g.fillStyle = '#26243f';
+    g.fillRect(0, base, W, H - base);
+    g.fillStyle = '#4a4870';
+    g.fillRect(0, 170, W, 1);
+    g.fillRect(0, 176, W, 1);
+
+    // tram (Z class in mustard for hip-hop, W class green for city pop)
+    const bounce = kickFlash > 0.5 ? 1 : 0;
+    kickFlash *= 0.8;
+    const tx = 150, ty = 152 - bounce;
+    const body = style === 'hiphop' ? '#e3a92b' : '#3f7a4f';
+    const trim = style === 'hiphop' ? '#7a5410' : '#e9dcae';
+    g.fillStyle = body;
+    g.fillRect(tx, ty, 92, 18);
+    g.fillStyle = trim;
+    g.fillRect(tx, ty + 12, 92, 2);
+    g.fillStyle = '#1b2440';
+    for (let k = 0; k < 7; k++) g.fillRect(tx + 6 + k * 12, ty + 3, 8, 6);
+    g.fillStyle = '#ffd98a';
+    g.fillRect(tx + 88, ty + 15, 3, 2);
+    g.fillStyle = '#000';
+    g.fillRect(tx + 6, ty + 18, 10, 3);
+    g.fillRect(tx + 76, ty + 18, 10, 3);
+    // route number box on the roof edge
+    g.fillStyle = '#07070c';
+    g.fillRect(tx + 80, ty - 4, 11, 5);
+    g.fillStyle = '#ffb43a';
+    g.fillRect(tx + 82, ty - 3, 7, 3);
+
+    requestAnimationFrame(draw);
+  }
+
+  $('seed').value = music.seed;
+  syncPlay();
+  requestAnimationFrame(draw);
+</script>
