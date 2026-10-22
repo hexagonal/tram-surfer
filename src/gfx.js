@@ -55,6 +55,7 @@ export function hsh(a, b, c = 0) {
 const PAL = PALETTE.map(hex);
 const IDX = new Uint8Array(32768);
 const LUT = new Int32Array(32768);
+const LUMA = new Uint8Array(32768);
 for (let i = 0; i < 32768; i++) {
   const r = ((i >> 10) & 31) * 8.226, g = ((i >> 5) & 31) * 8.226, b = (i & 31) * 8.226;
   let best = 0, bd = 1e9;
@@ -68,7 +69,13 @@ for (let i = 0; i < 32768; i++) {
   const p = PAL[best];
   // ImageData is RGBA bytes; on little-endian machines that is 0xAABBGGRR
   LUT[i] = 0xff000000 | ((p & 255) << 16) | (p & 0xff00) | ((p >> 16) & 255);
+  LUMA[i] = (((p >> 16) & 255) * 77 + ((p >> 8) & 255) * 150 + (p & 255) * 29) >> 8;
 }
+
+// edge smoothing: how much brighter one neighbour must be than another to count as an edge
+const EDGE = 28;
+// average of two RGBA pixels, channel by channel (alpha is put back by the caller)
+const avg = (a, b) => ((a & 0xfefefefe) >>> 1) + ((b & 0xfefefefe) >>> 1);
 
 const idx15 = (c) => ((c >> 9) & 0x7c00) | ((c >> 6) & 0x3e0) | ((c >> 3) & 31);
 
@@ -88,13 +95,49 @@ const DIM = PAL.map((p) => {
 export class Frame {
   constructor() {
     this.img = new Int32Array(W * H);
+    // the 3D view as it was before menus and the HUD went on top, so only it gets smoothed
+    this.world = new Int32Array(W * H);
+    this.hasWorld = false;
+    this.snapped = new Uint32Array(W * H);
+    this.luma = new Uint8Array(W * H);
   }
-  present(ctx, imageData, out32) {
+  /** Call once the 3D view is drawn: what's drawn after this (HUD, menus) stays crisp. */
+  keepWorld() {
+    this.world.set(this.img);
+    this.hasWorld = true;
+  }
+  /**
+   * Snap the frame to the palette and put it on the canvas. With smooth, the
+   * 3D view's edges are softened: wherever a pixel's neighbours differ
+   * sharply in brightness, it is blended half and half with the two
+   * neighbours across the edge. That rounds off the stair steps on slanted
+   * edges cheaply, and leaves flat areas, text and the HUD untouched.
+   */
+  present(ctx, imageData, out32, smooth = false) {
     const img = this.img;
-    for (let i = 0; i < img.length; i++) {
-      const c = img[i];
-      out32[i] = LUT[idx15(c)];
+    if (!smooth || !this.hasWorld) {
+      for (let i = 0; i < img.length; i++) out32[i] = LUT[idx15(img[i])];
+      this.hasWorld = false;
+      ctx.putImageData(imageData, 0, 0);
+      return;
     }
+    const src = this.snapped, lum = this.luma, world = this.world;
+    for (let i = 0; i < img.length; i++) {
+      const k = idx15(img[i]);
+      src[i] = LUT[k];
+      lum[i] = LUMA[k];
+    }
+    out32.set(src);
+    for (let y = 1; y < H - 1; y++) {
+      for (let i = y * W + 1, e = y * W + W - 1; i < e; i++) {
+        const n = lum[i - W], s = lum[i + W], we = lum[i - 1], ea = lum[i + 1];
+        const dv = n > s ? n - s : s - n, dh = we > ea ? we - ea : ea - we;
+        if ((dv < EDGE && dh < EDGE) || img[i] !== world[i]) continue;
+        const across = dv >= dh ? avg(src[i - W], src[i + W]) : avg(src[i - 1], src[i + 1]);
+        out32[i] = (avg(src[i], across) | 0xff000000) >>> 0;
+      }
+    }
+    this.hasWorld = false;
     ctx.putImageData(imageData, 0, 0);
   }
   fill(c) {
