@@ -50,6 +50,8 @@ Melbourne, which change over seamlessly mid-run.
 - Procedural lofi music (`music/lofi.js`), new music each run, muffled when
   paused or caught, plus synthesised sound effects
 - Sound control: speaker button (mute) and volume in the pause menu
+- Smooth edges (cheap anti-aliasing) on the 3D view, on by default; switch
+  between EDGES: SMOOTH and EDGES: SHARP in the pause menu
 
 ## Controls
 
@@ -72,6 +74,11 @@ floors, side walls and camera-facing walls, billboard sprites, a z-buffer,
 distance fog and cel outlines. Each frame is then snapped to a fixed
 64-colour palette (no dither) and scaled up with nearest-neighbour.
 WebAssembly wasn't needed.
+
+Edge smoothing is a cheap post-pass on the 3D view after palette snapping:
+wherever a pixel's neighbours differ sharply in brightness, it is blended
+half and half with the two neighbours across the edge (about 1 ms a frame).
+The HUD and menus are drawn after the 3D view is saved, so they stay crisp.
 
 The menus, HUD and pixel font are laid out on a 320×180 grid and drawn in 2×2
 blocks, so they keep their chunky look. The 3D view uses the full 640×360.
@@ -111,7 +118,8 @@ python3 -m http.server
 To test a level, start the run in it with `?zone=`, e.g.
 `http://localhost:8000/?zone=yarra` (`swanston`, `bourke`, `stkilda`,
 `collins` or `yarra`). Add `&res=high` or `&res=low` to fix the 3D view at
-640×360 or 320×180 instead of choosing it automatically.
+640×360 or 320×180 instead of choosing it automatically, and `&aa=on` or
+`&aa=off` to force edge smoothing on or off.
 
 If you change the palette or the Japanese text in `tools/gen_assets.py`,
 rerun it to regenerate `src/palette.js` and `src/jptext.js`.

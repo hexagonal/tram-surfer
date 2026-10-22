@@ -155,9 +155,9 @@ export function hud(fr, btns, run, snd, volFlash, zone) {
   }
 }
 
-export function pauseMenu(fr, btns, snd) {
+export function pauseMenu(fr, btns, snd, smooth) {
   fr.dim(0, 0, LW, LH);
-  const x = 90, y = 28, w = 140, h = 124;
+  const x = 90, y = 18, w = 140, h = 144;
   fr.dim(x, y, w, h, 2);
   textC(fr, LW / 2, y + 8, 'PAUSED', '#ffd23a', 2);
   const s = jpSize('pause');
@@ -167,8 +167,9 @@ export function pauseMenu(fr, btns, snd) {
   pips(fr, x + 67, y + 45, snd);
   button(fr, btns, x + 99, y + 42, 13, 13, '+', 'vol+');
   button(fr, btns, x + 20, y + 62, w - 40, 15, snd.muted ? 'UNMUTE' : 'MUTE', 'mute', '#ffffff');
-  button(fr, btns, x + 20, y + 82, w - 40, 15, 'RESUME', 'resume');
-  button(fr, btns, x + 20, y + 102, w - 40, 15, 'QUIT TO TITLE', 'quit', '#f0f0f0');
+  button(fr, btns, x + 20, y + 82, w - 40, 15, smooth ? 'EDGES: SMOOTH' : 'EDGES: SHARP', 'smooth', '#ffffff');
+  button(fr, btns, x + 20, y + 102, w - 40, 15, 'RESUME', 'resume');
+  button(fr, btns, x + 20, y + 122, w - 40, 15, 'QUIT TO TITLE', 'quit', '#f0f0f0');
 }
 
 // --- game over -------------------------------------------------------------------------------

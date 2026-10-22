@@ -39,6 +39,12 @@ const DINGO = [0, 0.25, 0.5, 0.75].map((ph) => dingoBackSprite(ph, PX));
 const BEST_KEY = 'tram-surfer:best';
 let best = 0;
 try { best = Number(localStorage.getItem(BEST_KEY)) || 0; } catch { /* private mode */ }
+// edge smoothing (anti-aliasing) of the 3D view: on unless turned off in the
+// pause menu; ?aa=on or ?aa=off overrides it for testing
+const SMOOTH_KEY = 'tram-surfer:smooth';
+let smooth = true;
+try { smooth = localStorage.getItem(SMOOTH_KEY) !== 'off'; } catch { /* private mode */ }
+if (QUERY.get('aa')) smooth = QUERY.get('aa') !== 'off';
 
 let state = 'intro';
 let stateT = 0;
@@ -94,6 +100,11 @@ function act(a) {
     case 'mute': sound.toggleMute(); volFlash = 1.5; sound.play('click'); break;
     case 'vol-': sound.setLevel(sound.level - 1); volFlash = 1.5; sound.play('click'); break;
     case 'vol+': sound.setLevel(sound.level + 1); volFlash = 1.5; sound.play('click'); break;
+    case 'smooth':
+      smooth = !smooth;
+      try { localStorage.setItem(SMOOTH_KEY, smooth ? 'on' : 'off'); } catch { /* private mode */ }
+      sound.play('click');
+      break;
   }
 }
 
@@ -242,6 +253,7 @@ function drawWorld(dt) {
   scene.end();
   S.speedLines(frame, cam.hor * PX, t, run.speed);
   if (here.id === 'swanston' || here.id === 'bourke') S.petals(frame, t, dt);
+  frame.keepWorld();
 }
 
 /**
@@ -289,13 +301,13 @@ function loop(now) {
     drawWorld(state === 'paused' ? 0 : dt);
     if (state === 'over') S.gameOver(frame, btns, run, best, stateT);
     else S.hud(frame, btns, run, sound, volFlash, ZONES[run.zoneAt(run.p.z)]);
-    if (state === 'paused') S.pauseMenu(frame, btns, sound);
+    if (state === 'paused') S.pauseMenu(frame, btns, sound, smooth);
   }
-  frame.present(ctx, imageData, out32);
+  frame.present(ctx, imageData, out32, smooth);
   if (state === 'play' && !RES && scene.step === 1) watchSpeed(performance.now() - t0);
   requestAnimationFrame(loop);
 }
 requestAnimationFrame(loop);
 
 // handy for poking at the game from the console
-globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; }, get detail() { return scene.step; }, btns };
+globalThis.tramSurfer = { get run() { return run; }, act, sound, get state() { return state; }, get detail() { return scene.step; }, get smooth() { return smooth; }, btns };
